@@ -26,6 +26,7 @@ import 'package:PiliPlus/pages/setting/widgets/multi_select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/extension/file_ext.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
@@ -329,6 +330,19 @@ List<SettingsModel> get styleSettings => [
           showBgColor: false,
         ),
       );
+    },
+  ),
+  NormalModel(
+    onTap: (context, setState) => Get.toNamed('/biliTheme'),
+    leading: const Icon(Icons.interests_outlined),
+    title: 'B站个性主题',
+    getSubtitle: () {
+      final service = Get.find<BiliThemeService>();
+      if (!service.enabled.value) {
+        return '未启用';
+      }
+      final name = service.appliedName;
+      return name == null ? '已启用（未应用主题）' : '已应用：$name';
     },
   ),
   PopupModel(

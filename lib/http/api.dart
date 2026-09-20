@@ -27,6 +27,12 @@ abstract final class Api {
 
   static const String tvPlayUrl = '/x/tv/playurl';
 
+  // B站个性主题（装扮）
+  static const String biliThemeAssetList =
+      '${HttpString.apiBaseUrl}/x/garb/user/asset/list';
+  static const String biliThemeEquipSkin =
+      '${HttpString.appBaseUrl}/x/resource/show/skin';
+
   // 字幕
   // aid, cid
   static const String playInfo = '/x/player/wbi/v2';

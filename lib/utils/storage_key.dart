@@ -241,6 +241,15 @@ abstract final class SettingBoxKey {
       liveCdnUrl = 'liveCdnUrl',
       saveReply = 'saveReply',
       appFont = 'appFont';
+
+  // B站个性主题（装扮）
+  static const String biliThemeEnabled = 'biliThemeEnabled',
+      biliThemeBgOpacity = 'biliThemeBgOpacity',
+      biliThemeMineVideo = 'biliThemeMineVideo',
+      biliThemeAppliedId = 'biliThemeAppliedId',
+      biliThemeAppliedVer = 'biliThemeAppliedVer',
+      biliThemeAssets = 'biliThemeAssets',
+      biliThemeSeed = 'biliThemeSeed';
 }
 
 abstract final class LocalCacheKey {

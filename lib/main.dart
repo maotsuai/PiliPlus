@@ -12,6 +12,7 @@ import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/services/logger.dart';
 import 'package:PiliPlus/services/service_locator.dart';
@@ -109,6 +110,7 @@ void main() async {
   ]);
   Get
     ..lazyPut(AccountService.new)
+    ..lazyPut(BiliThemeService.new)
     ..lazyPut(DownloadService.new);
   HttpOverrides.global = _CustomHttpOverrides();
 
@@ -248,10 +250,20 @@ class MyApp extends StatelessWidget {
   static ColorScheme? _light, _dark;
 
   static (ThemeData, ThemeData) getAllTheme() {
-    final dynamicColor = _light != null && _dark != null && Pref.dynamicColor;
+    final biliThemeSeed = _biliThemeSeed();
+    final dynamicColor =
+        biliThemeSeed == null &&
+        _light != null &&
+        _dark != null &&
+        Pref.dynamicColor;
 
     final ColorScheme lightScheme, darkScheme;
-    if (dynamicColor) {
+    if (biliThemeSeed != null) {
+      // B站个性主题取色优先
+      final variant = Pref.schemeVariant;
+      lightScheme = biliThemeSeed.asColorSchemeSeed(variant, .light);
+      darkScheme = biliThemeSeed.asColorSchemeSeed(variant, .dark);
+    } else if (dynamicColor) {
       lightScheme = _light!;
       darkScheme = _dark!;
     } else {
@@ -276,6 +288,15 @@ class MyApp extends StatelessWidget {
         isDynamic: dynamicColor,
       ),
     );
+  }
+
+  /// B站个性主题种子色（启用且已应用时）
+  static Color? _biliThemeSeed() {
+    if (Get.isRegistered<BiliThemeService>()) {
+      final seed = Get.find<BiliThemeService>().seedColor;
+      if (seed != null) return seed;
+    }
+    return null;
   }
 
   @override

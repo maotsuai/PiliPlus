@@ -13,6 +13,7 @@ import 'package:PiliPlus/pages/home/view.dart';
 import 'package:PiliPlus/pages/main/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/models/play_status.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
@@ -523,10 +524,15 @@ class _MainAppState extends PopScopeState<MainApp>
     }
 
     child = Material(
-      child: MainLayout(
-        sideBar: sideBar,
-        bottomNav: bottomNav,
-        body: Padding(padding: padding, child: child),
+      child: Stack(
+        children: [
+          Positioned.fill(child: _biliThemeBackground()),
+          MainLayout(
+            sideBar: sideBar,
+            bottomNav: bottomNav,
+            body: Padding(padding: padding, child: child),
+          ),
+        ],
       ),
     );
 
@@ -547,8 +553,48 @@ class _MainAppState extends PopScopeState<MainApp>
     return child;
   }
 
+  /// B站个性主题：首页背景（低透明度铺满）
+  Widget _biliThemeBackground() {
+    return Obx(() {
+      final service = BiliThemeService.instance;
+      final bg = service.enabled.value ? service.homeBg : null;
+      if (bg == null) return const SizedBox.shrink();
+      return Stack(
+        fit: .expand,
+        children: [
+          Image.file(bg, fit: .cover, gaplessPlayback: true),
+          ColoredBox(
+            color: _colorScheme.surface.withValues(
+              alpha: service.bgOpacity.value,
+            ),
+          ),
+        ],
+      );
+    });
+  }
+
   Widget _buildIcon({required NavigationBarType type, bool selected = false}) {
-    final icon = selected ? type.selectIcon : type.icon;
+    Widget icon = selected ? type.selectIcon : type.icon;
+    final themeService = BiliThemeService.instance;
+    if (themeService.enabled.value) {
+      final themeIcon = themeService.tailIcon(
+        switch (type) {
+          NavigationBarType.home => 'main',
+          NavigationBarType.dynamics => 'dynamic',
+          NavigationBarType.mine => 'myself',
+        },
+        selected,
+      );
+      if (themeIcon != null) {
+        icon = Image.file(
+          themeIcon,
+          width: 26,
+          height: 26,
+          fit: .contain,
+          gaplessPlayback: true,
+        );
+      }
+    }
     return type == .dynamics
         ? Obx(
             () {
