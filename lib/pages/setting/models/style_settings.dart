@@ -26,6 +26,7 @@ import 'package:PiliPlus/pages/setting/widgets/multi_select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/select_dialog.dart';
 import 'package:PiliPlus/pages/setting/widgets/slider_dialog.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/extension/file_ext.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
@@ -309,9 +310,14 @@ List<SettingsModel> get styleSettings => [
     onTap: (context, setState) => Get.toNamed('/colorSetting'),
     leading: const Icon(Icons.color_lens_outlined),
     title: '应用主题',
-    getSubtitle: () => '当前主题：${Pref.dynamicColor ? '动态取色' : '指定颜色'}',
+    getSubtitle: () =>
+        '当前主题：${_biliThemeColorActive
+            ? 'B站装扮取色'
+            : Pref.dynamicColor
+            ? '动态取色'
+            : '指定颜色'}',
     getTrailing: (theme) {
-      if (Pref.dynamicColor) {
+      if (_biliThemeColorActive || Pref.dynamicColor) {
         return Icon(Icons.color_lens_rounded, color: theme.colorScheme.primary);
       }
       final customColor = Pref.customColor;
@@ -330,6 +336,12 @@ List<SettingsModel> get styleSettings => [
         ),
       );
     },
+  ),
+  NormalModel(
+    onTap: (context, setState) => Get.toNamed('/biliTheme'),
+    leading: const Icon(Icons.auto_awesome_outlined),
+    title: 'B站个性主题',
+    subtitle: '使用账号已购装扮的背景、配色与底栏图标',
   ),
   PopupModel(
     leading: const Icon(Icons.home_outlined),
@@ -389,6 +401,10 @@ List<SettingsModel> get styleSettings => [
       leading: const Icon(Icons.autofps_select_outlined),
     ),
 ];
+
+bool get _biliThemeColorActive =>
+    Get.isRegistered<BiliThemeService>() &&
+    BiliThemeService.instance.activeSeedColor != null;
 
 void _showQualityDialog({
   required BuildContext context,

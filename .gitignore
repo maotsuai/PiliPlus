@@ -150,3 +150,5 @@ pili_release.json
 dist
 
 test*
+PILIPLUS_THEME_FEASIBILITY.md
+._analysis_options.yaml

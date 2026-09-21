@@ -12,6 +12,7 @@ import 'package:PiliPlus/models/common/nav_bar_config.dart';
 import 'package:PiliPlus/pages/home/view.dart';
 import 'package:PiliPlus/pages/main/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/controller.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/app_scheme.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
@@ -518,10 +519,15 @@ class _MainAppState extends PopScopeState<MainApp>
     }
 
     child = Material(
-      child: MainLayout(
-        sideBar: sideBar,
-        bottomNav: bottomNav,
-        body: Padding(padding: padding, child: child),
+      child: Stack(
+        children: [
+          Positioned.fill(child: _biliThemeBackground()),
+          MainLayout(
+            sideBar: sideBar,
+            bottomNav: bottomNav,
+            body: Padding(padding: padding, child: child),
+          ),
+        ],
       ),
     );
 
@@ -542,8 +548,53 @@ class _MainAppState extends PopScopeState<MainApp>
     return child;
   }
 
+  Widget _biliThemeBackground() => Obx(() {
+    final service = BiliThemeService.instance;
+    final bg = service.enabled.value ? service.homeBg : null;
+    if (bg == null) return const SizedBox.shrink();
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            bg,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          ),
+          ColoredBox(
+            color: _colorScheme.surface.withValues(
+              alpha: service.bgOpacity.value,
+            ),
+          ),
+        ],
+      ),
+    );
+  });
+
   Widget _buildIcon({required NavigationBarType type, bool selected = false}) {
-    final icon = selected ? type.selectIcon : type.icon;
+    Widget icon = selected ? type.selectIcon : type.icon;
+    final service = BiliThemeService.instance;
+    if (service.enabled.value) {
+      final themedIcon = service.tailIcon(
+        switch (type) {
+          .home => 'main',
+          .dynamics => 'dynamic',
+          .mine => 'myself',
+        },
+        selected,
+      );
+      if (themedIcon != null) {
+        icon = Image.file(
+          themedIcon,
+          width: 26,
+          height: 26,
+          fit: BoxFit.contain,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => selected ? type.selectIcon : type.icon,
+        );
+      }
+    }
     return type == .dynamics
         ? Obx(
             () {

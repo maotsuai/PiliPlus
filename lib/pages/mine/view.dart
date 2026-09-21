@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
@@ -6,6 +7,7 @@ import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/player_bar.dart';
+import 'package:PiliPlus/common/widgets/route_aware_mixin.dart';
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/nav_bar_config.dart';
 import 'package:PiliPlus/models_new/fav/fav_folder/list.dart';
@@ -15,6 +17,7 @@ import 'package:PiliPlus/pages/login/controller.dart';
 import 'package:PiliPlus/pages/main/controller.dart';
 import 'package:PiliPlus/pages/mine/controller.dart';
 import 'package:PiliPlus/pages/mine/widgets/item.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/bili_utils.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
@@ -26,6 +29,8 @@ import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import 'package:material_ui/material_ui.dart' hide ListTile;
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 class MinePage extends StatefulWidget {
   const MinePage({super.key, this.showBackBtn = false});
@@ -37,12 +42,29 @@ class MinePage extends StatefulWidget {
 }
 
 class _MediaPageState extends CommonPageState<MinePage>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, RouteAware, RouteAwareMixin<MinePage> {
   final MineController controller = Get.putOrFind(MineController.new);
   late final MainController _mainController = Get.find<MainController>();
+  final _routeVisible = true.obs;
 
   @override
   bool get wantKeepAlive => true;
+
+  @override
+  void didPushNext() {
+    _routeVisible.value = false;
+  }
+
+  @override
+  void didPopNext() {
+    _routeVisible.value = true;
+  }
+
+  @override
+  void dispose() {
+    _routeVisible.close();
+    super.dispose();
+  }
 
   bool get checkPage =>
       _mainController.navigationBars[0] != NavigationBarType.mine &&
@@ -85,7 +107,7 @@ class _MediaPageState extends CommonPageState<MinePage>
                   padding: const .only(bottom: 100),
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
-                    _buildUserInfo(theme, secondary),
+                    _buildThemedUserInfo(theme, secondary),
                     _buildActions(secondary),
                     Obx(
                       () => controller.loadingState.value is Loading
@@ -222,22 +244,98 @@ class _MediaPageState extends CommonPageState<MinePage>
     );
   }
 
-  Widget _buildUserInfo(ThemeData theme, Color secondary) {
+  Widget _buildThemedUserInfo(ThemeData theme, Color secondary) => Obx(() {
+    final service = BiliThemeService.instance;
+    final enabled = service.enabled.value;
+    final staticBg = enabled ? service.mineBg : null;
+    final videoBg = enabled && service.mineVideo.value
+        ? service.mineVideoFile
+        : null;
+    if (staticBg == null && videoBg == null) {
+      return _buildUserInfo(theme, secondary);
+    }
+
+    final selectedIndex = _mainController.selectedIndex.value;
+    final isMine = selectedIndex < _mainController.navigationBars.length &&
+        _mainController.navigationBars[selectedIndex] ==
+            NavigationBarType.mine;
+    final isCurrentTab = isMine && _routeVisible.value;
+    final height = (MediaQuery.sizeOf(context).height / 3)
+        .clamp(220.0, 380.0)
+        .toDouble();
+    return SizedBox(
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (staticBg != null)
+            Image.file(
+              staticBg,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          if (videoBg != null)
+            _LoopVideoBg(
+              key: ValueKey(
+                '${videoBg.path}:${service.resourceRevision.value}',
+              ),
+              file: videoBg,
+              playing: isCurrentTab,
+              loop: service.loopMineVideo,
+            ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x19000000), Color(0xA6000000)],
+              ),
+            ),
+          ),
+          Center(
+            child: SizedBox(
+              width: double.infinity,
+              child: _buildUserInfo(
+                theme,
+                Colors.white,
+                onThemeBackground: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  });
+
+  Widget _buildUserInfo(
+    ThemeData theme,
+    Color secondary, {
+    bool onThemeBackground = false,
+  }) {
+    final shadows = onThemeBackground
+        ? const [Shadow(color: Colors.black54, blurRadius: 4)]
+        : null;
     final style = TextStyle(
       fontSize: theme.textTheme.titleMedium!.fontSize,
       fontWeight: FontWeight.bold,
+      color: onThemeBackground ? Colors.white : null,
+      shadows: shadows,
     );
     final labelStyle = theme.textTheme.labelMedium!.copyWith(
-      color: theme.colorScheme.outline,
+      color: onThemeBackground ? Colors.white70 : theme.colorScheme.outline,
+      shadows: shadows,
     );
     final coinLabelStyle = TextStyle(
       fontSize: theme.textTheme.labelMedium!.fontSize,
-      color: theme.colorScheme.outline,
+      color: onThemeBackground ? Colors.white70 : theme.colorScheme.outline,
+      shadows: shadows,
     );
     final coinValStyle = TextStyle(
       fontSize: theme.textTheme.labelMedium!.fontSize,
       fontWeight: FontWeight.bold,
       color: secondary,
+      shadows: shadows,
     );
     return Obx(() {
       final userInfo = controller.userInfo.value;
@@ -308,9 +406,12 @@ class _MediaPageState extends CommonPageState<MinePage>
                               userInfo.uname ?? '点击登录',
                               style: theme.textTheme.titleMedium!.copyWith(
                                 height: 1,
-                                color: isVip && userInfo.vipType == 2
+                                color: onThemeBackground
+                                    ? Colors.white
+                                    : isVip && userInfo.vipType == 2
                                     ? theme.colorScheme.vipColor
                                     : null,
+                                shadows: shadows,
                               ),
                               maxLines: 1,
                               overflow: .ellipsis,
@@ -358,9 +459,11 @@ class _MediaPageState extends CommonPageState<MinePage>
                           value: hasLevel
                               ? levelInfo.currentExp! / levelInfo.nextExp!
                               : 0,
-                          backgroundColor: theme.colorScheme.outline.withValues(
-                            alpha: 0.4,
-                          ),
+                          backgroundColor: onThemeBackground
+                              ? Colors.white24
+                              : theme.colorScheme.outline.withValues(
+                                  alpha: 0.4,
+                                ),
                           valueColor: AlwaysStoppedAnimation<Color>(secondary),
                           stopIndicatorColor: Colors.transparent,
                         ),
@@ -377,11 +480,11 @@ class _MediaPageState extends CommonPageState<MinePage>
             mainAxisAlignment: .spaceEvenly,
             children: [
               _btn(
-                count: userStat.dynamicCount,
+                count: controller.archiveCount.value,
                 countStyle: style,
-                name: '动态',
+                name: '稿件',
                 labelStyle: labelStyle,
-                onTap: () => controller.push('memberDynamics'),
+                onTap: controller.onLogin,
               ),
               _btn(
                 count: userStat.following,
@@ -566,5 +669,102 @@ class _MediaPageState extends CommonPageState<MinePage>
         ),
       ),
     };
+  }
+}
+
+class _LoopVideoBg extends StatefulWidget {
+  const _LoopVideoBg({
+    super.key,
+    required this.file,
+    required this.playing,
+    required this.loop,
+  });
+
+  final File file;
+  final bool playing;
+  final bool loop;
+
+  @override
+  State<_LoopVideoBg> createState() => _LoopVideoBgState();
+}
+
+class _LoopVideoBgState extends State<_LoopVideoBg>
+    with WidgetsBindingObserver {
+  Player? _player;
+  VideoController? _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    Player? initializingPlayer;
+    try {
+      initializingPlayer = await Player.create();
+      final controller = await VideoController.create(initializingPlayer);
+      if (!mounted) {
+        initializingPlayer.dispose();
+        return;
+      }
+      final player = initializingPlayer;
+      _player = player;
+      _controller = controller;
+      initializingPlayer = null;
+      await player.setVolume(0);
+      await player.setPlaylistMode(
+        widget.loop ? PlaylistMode.loop : PlaylistMode.none,
+      );
+      await player.open(
+        Media(Uri.file(widget.file.path).toString()),
+        play: widget.playing,
+      );
+      if (mounted) setState(() {});
+    } catch (_) {
+      initializingPlayer?.dispose();
+      _player?.dispose();
+      _player = null;
+      _controller = null;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _LoopVideoBg oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playing != widget.playing) {
+      widget.playing ? _player?.play() : _player?.pause();
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && widget.playing) {
+      _player?.play();
+    } else if (state != AppLifecycleState.resumed) {
+      _player?.pause();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _player?.dispose();
+    _player = null;
+    _controller = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    if (controller == null) return const SizedBox.shrink();
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SimpleVideo(controller: controller, fill: Colors.transparent),
+      ),
+    );
   }
 }

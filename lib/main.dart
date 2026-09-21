@@ -12,6 +12,7 @@ import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/services/logger.dart';
 import 'package:PiliPlus/services/service_locator.dart';
@@ -109,6 +110,7 @@ void main() async {
   ]);
   Get
     ..lazyPut(AccountService.new)
+    ..lazyPut(BiliThemeService.new)
     ..lazyPut(DownloadService.new);
   HttpOverrides.global = _CustomHttpOverrides();
 
@@ -249,9 +251,18 @@ class MyApp extends StatelessWidget {
 
   static (ThemeData, ThemeData) getAllTheme() {
     final dynamicColor = _light != null && _dark != null && Pref.dynamicColor;
+    final biliThemeSeed = Get.isRegistered<BiliThemeService>()
+        ? BiliThemeService.instance.activeSeedColor
+        : null;
+    final useBiliThemeSeed = biliThemeSeed != null;
 
     final ColorScheme lightScheme, darkScheme;
-    if (dynamicColor) {
+    if (useBiliThemeSeed) {
+      final seed = Color(biliThemeSeed!);
+      final variant = Pref.schemeVariant;
+      lightScheme = seed.asColorSchemeSeed(variant, .light);
+      darkScheme = seed.asColorSchemeSeed(variant, .dark);
+    } else if (dynamicColor) {
       lightScheme = _light!;
       darkScheme = _dark!;
     } else {
@@ -268,12 +279,12 @@ class MyApp extends StatelessWidget {
     return (
       ThemeUtils.lightTheme = ThemeUtils.getThemeData(
         colorScheme: lightScheme,
-        isDynamic: dynamicColor,
+        isDynamic: dynamicColor && !useBiliThemeSeed,
       ),
       ThemeUtils.darkTheme = ThemeUtils.getThemeData(
         isDark: true,
         colorScheme: darkScheme,
-        isDynamic: dynamicColor,
+        isDynamic: dynamicColor && !useBiliThemeSeed,
       ),
     );
   }

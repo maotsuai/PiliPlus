@@ -12,6 +12,9 @@ late String downloadPath;
 String get defDownloadPath =>
     path.join(appSupportDirPath, PathUtils.downloadDir);
 
+String get biliThemeDirPath =>
+    path.join(appSupportDirPath, PathUtils.biliThemeDir);
+
 abstract final class PathUtils {
   static const videoNameType1 = '0.mp4';
   static const _fileExt = '.m4s';
@@ -20,6 +23,7 @@ abstract final class PathUtils {
   static const coverName = 'cover.jpg';
   static const danmakuName = 'danmaku.pb';
   static const downloadDir = 'download';
+  static const biliThemeDir = 'bili_theme';
 
   static String buildShadersAbsolutePath(
     String baseDirectory,

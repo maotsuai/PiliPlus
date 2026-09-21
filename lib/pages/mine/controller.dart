@@ -1,6 +1,7 @@
 import 'package:PiliPlus/common/widgets/custom_icon.dart';
 import 'package:PiliPlus/http/fav.dart';
 import 'package:PiliPlus/http/loading_state.dart';
+import 'package:PiliPlus/http/member.dart';
 import 'package:PiliPlus/http/user.dart';
 import 'package:PiliPlus/models/common/account_type.dart';
 import 'package:PiliPlus/models/common/theme/theme_type.dart';
@@ -32,6 +33,7 @@ class MineController extends CommonDataController<FavFolderData, FavFolderData>
   final Rx<UserInfoData> userInfo = UserInfoData().obs;
   // 用户状态 动态、关注、粉丝
   final Rx<UserStat> userStat = const UserStat().obs;
+  final archiveCount = RxnInt();
 
   final Rx<ThemeType> themeType = Pref.themeType.obs;
 
@@ -119,6 +121,7 @@ class MineController extends CommonDataController<FavFolderData, FavFolderData>
       }
     }
     queryUserStatOwner();
+    queryArchiveCount();
   }
 
   void _onLogoutMain() => Accounts.deleteAll({Accounts.main});
@@ -127,6 +130,13 @@ class MineController extends CommonDataController<FavFolderData, FavFolderData>
     final res = await UserHttp.userStatOwner();
     if (res case Success(:final response)) {
       userStat.value = response;
+    }
+  }
+
+  Future<void> queryArchiveCount() async {
+    final res = await MemberHttp.memberCardInfo(mid: Accounts.main.mid);
+    if (res case Success(:final response)) {
+      archiveCount.value = response.archiveCount;
     }
   }
 
@@ -304,6 +314,7 @@ class MineController extends CommonDataController<FavFolderData, FavFolderData>
     } else {
       userInfo.value = UserInfoData();
       userStat.value = const UserStat();
+      archiveCount.value = null;
       loadingState.value = LoadingState.loading();
     }
   }

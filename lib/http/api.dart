@@ -1,6 +1,11 @@
 import 'package:PiliPlus/http/constants.dart';
 
 abstract final class Api {
+  static const String biliThemeAssetList =
+      '${HttpString.apiBaseUrl}/x/garb/user/asset/list';
+  static const String biliThemeEquipSkin =
+      '${HttpString.appBaseUrl}/x/resource/show/skin';
+
   // 推荐视频
   static const String recommendListApp =
       '${HttpString.appBaseUrl}/x/v2/feed/index';
