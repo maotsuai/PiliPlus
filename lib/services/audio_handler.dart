@@ -25,7 +25,9 @@ Future<VideoPlayerServiceHandler> initAudioService() {
       androidNotificationChannelId: 'com.example.piliplus.audio',
       androidNotificationChannelName: 'Audio Service ${Constants.appName}',
       androidNotificationOngoing: true,
-      androidStopForegroundOnPause: true,
+      // Keep the service available across stalls and lock-screen pauses so
+      // resuming does not require starting a foreground service from background.
+      androidStopForegroundOnPause: false,
       fastForwardInterval: Duration(seconds: 10),
       rewindInterval: Duration(seconds: 10),
       androidNotificationChannelDescription: 'Media notification channel',
@@ -117,7 +119,7 @@ class VideoPlayerServiceHandler extends BaseAudioHandler with SeekHandler {
         playing = true;
         processingState = isBuffering ? .buffering : .ready;
       case .paused:
-        playing = isBuffering;
+        playing = false;
         processingState = isBuffering ? .buffering : .ready;
     }
     _updateState(

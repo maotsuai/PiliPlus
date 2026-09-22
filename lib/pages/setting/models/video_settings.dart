@@ -156,7 +156,7 @@ List<SettingsModel> get videoSettings => [
     title: '缓冲时长',
     leading: const Icon(Icons.av_timer),
     getSubtitle: () =>
-        '当前：${Pref.bufferSec}s。实际缓冲为二者最小值。对于直播流，该选项无效（此选项即mpv的--cache-secs）',
+        '当前：${Pref.bufferSec}s。点播预读时长，倍速播放按比例增加，同时受缓冲大小限制。直播单独预读最多30秒，卡顿后缓冲2秒恢复播放；设置在下次加载时生效。',
     onTap: _showBufferSecDialog,
   ),
   NormalModel(

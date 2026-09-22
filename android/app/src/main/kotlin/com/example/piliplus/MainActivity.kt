@@ -6,8 +6,16 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager.LayoutParams
 import com.ryanheise.audioservice.AudioServiceActivity
+import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : AudioServiceActivity() {
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        if (!flutterEngine.plugins.has(PlaybackRecoveryPlugin::class.java)) {
+            flutterEngine.plugins.add(PlaybackRecoveryPlugin())
+        }
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (AndroidHelper.isFoldable) {
@@ -24,6 +32,8 @@ class MainActivity : AudioServiceActivity() {
     }
 
     override fun onDestroy() {
+        (flutterEngine?.plugins?.get(PlaybackRecoveryPlugin::class.java)
+                as? PlaybackRecoveryPlugin)?.stop()
         stopService(Intent(this, com.ryanheise.audioservice.AudioService::class.java))
         super.onDestroy()
     }

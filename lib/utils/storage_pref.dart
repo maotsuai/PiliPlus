@@ -821,10 +821,10 @@ abstract final class Pref {
       _setting.get(SettingBoxKey.enableLongShowControl, defaultValue: false);
 
   static double get bufferSize =>
-      _setting.get(SettingBoxKey.bufferSize, defaultValue: 4.0);
+      _setting.get(SettingBoxKey.bufferSize, defaultValue: 32.0);
 
   static double get bufferSec =>
-      _setting.get(SettingBoxKey.bufferSec, defaultValue: 16.0);
+      _setting.get(SettingBoxKey.bufferSec, defaultValue: 120.0);
 
   static Map<String, String> initBuffer([double playbackSpeed = 1.0]) {
     final bufSec = Pref.bufferSec * playbackSpeed;
@@ -832,7 +832,10 @@ abstract final class Pref {
     return {
       'cache': 'yes',
       'cache-secs': bufSec.toStringAsFixed(3),
-      'demuxer-hysteresis-secs': (bufSec / 1.5).toStringAsFixed(3),
+      // Refill as soon as space is available, including during background play.
+      'demuxer-hysteresis-secs': '0',
+      'cache-pause': 'yes',
+      'cache-pause-wait': '3',
       'demuxer-max-bytes': bufSiz,
       'demuxer-max-back-bytes': bufSiz,
     };
@@ -841,6 +844,11 @@ abstract final class Pref {
   static Map<String, String> initLiveBuffer() {
     return {
       'cache': 'yes',
+      // Bound live prefetch separately from VOD; do not wait for a full cache.
+      'cache-secs': '30',
+      'demuxer-hysteresis-secs': '0',
+      'cache-pause': 'yes',
+      'cache-pause-wait': '2',
       'demuxer-max-bytes': (Pref.bufferSize * 0x200000).toStringAsFixed(0),
       'demuxer-max-back-bytes': '0',
     };
