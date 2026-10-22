@@ -30,8 +30,8 @@ Future<int?> extractSeedColorFromImage(
         rgba[offset + 2];
   });
 
-  final quantized = QuantizerCelebi().quantize(pixels, maxColors);
-  final ranked = Score.score(quantized, desired: 1);
+  final quantized = await QuantizerCelebi().quantize(pixels, maxColors);
+  final ranked = Score.score(quantized.colorToCount, desired: 1);
   if (ranked.isEmpty) return null;
   return 0xFF000000 | ranked.first;
 }

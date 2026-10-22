@@ -187,7 +187,7 @@ class BiliThemeService extends GetxService {
     if (url == null || url.isEmpty) return '该主题没有资源包';
     applying.value = true;
     try {
-      final res = await Request().dio.get<List<int>>(
+      final res = await Request.dio.get<List<int>>(
         url,
         options: Options(responseType: ResponseType.bytes),
       );
