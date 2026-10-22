@@ -197,7 +197,9 @@ class AudioController extends GetxController
     videoPlayerServiceHandler
       ?..onPlay = onPlay
       ..onPause = onPause
-      ..onSeek = onSeek;
+      ..onSeek = onSeek
+      ..onSkipToNext = playNext
+      ..onSkipToPrevious = playPrev;
 
     animController = AnimationController(
       vsync: this,
@@ -337,10 +339,7 @@ class AudioController extends GetxController
           return;
         }
         position.value = 0;
-        final audio = audios.findClosestTarget(
-          (e) => e.id <= cacheAudioQa,
-          (a, b) => a.id > b.id ? a : b,
-        );
+        final audio = audios.findTargetMedia((e) => e.id, cacheAudioQa);
         _onOpenMedia(VideoUtils.getCdnUrl(audio.playUrls), volume: volume);
       } else if (playInfo.hasPlayUrl()) {
         final playUrl = playInfo.playUrl;
@@ -410,10 +409,10 @@ class AudioController extends GetxController
       stream.position.listen((position) {
         if (isDragging) return;
         final seconds = position.inSeconds;
-        if (seconds == 0 && _playerStatus.isPlaying) {
-          _updatePlaybackState(position: position);
-        }
         if (seconds != this.position.value) {
+          if (seconds == 0 && _playerStatus.isPlaying) {
+            _updatePlaybackState(position: position);
+          }
           this.position.value = seconds;
           _videoDetailController?.playedTime = position;
         }
@@ -433,8 +432,11 @@ class AudioController extends GetxController
           _startStatusTimer();
         }
       }),
-      stream.buffering.listen((buffering) {
-        if (buffering && !player!.state.completed) _stopStatusTimer();
+      stream.buffering.listen((bool buffering) {
+        if (!_playerStatus.isCompleted) {
+          _stopStatusTimer();
+          _updatePlaybackState();
+        }
       }),
       stream.completed.listen((completed) {
         _videoDetailController?.playedTime = player!.state.duration;
@@ -825,7 +827,10 @@ class AudioController extends GetxController
       ?..onPlay = null
       ..onPause = null
       ..onSeek = null
-      ..onVideoDetailDispose(hashCode.toString());
+      ..onSkipToNext = null
+      ..onSkipToPrevious = null
+      ..onVideoDetailDispose(hashCode.toString())
+      ..clearIfNeeded();
     _subscriptions?.forEach((e) => e.cancel());
     _subscriptions?.clear();
     _subscriptions = null;

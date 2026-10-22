@@ -130,7 +130,7 @@ class _BiliThemePageState extends State<BiliThemePage> {
                 },
               ),
               SwitchListTile(
-                secondary: const Icon(Icons.animated_images_outlined),
+                secondary: const Icon(Icons.animation_outlined),
                 title: const Text('我的页动态背景'),
                 subtitle: const Text(
                   '使用主题包内视频；缺失时自动使用静态图',

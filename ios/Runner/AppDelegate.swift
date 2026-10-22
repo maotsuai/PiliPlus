@@ -18,5 +18,8 @@ import UIKit
     playbackBackgroundTask = PlaybackBackgroundTask(
       messenger: engineBridge.applicationRegistrar.messenger()
     )
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PipPlugin") {
+      PipPlugin.register(with: registrar)
+    }
   }
 }
