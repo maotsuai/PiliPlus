@@ -99,39 +99,57 @@ class _MediaPageState extends CommonPageState<MinePage>
   Widget build(BuildContext context) {
     super.build(context);
     final secondary = theme.colorScheme.secondary;
-    return Column(
-      children: [
-        Padding(
-          padding: const .symmetric(vertical: 10),
-          child: _buildHeaderActions,
-        ),
-        Expanded(
-          child: Material(
-            type: .transparency,
-            child: refreshIndicator(
-              onRefresh: controller.onRefresh,
-              child: onBuild(
-                ListView(
-                  padding: const .only(bottom: 150),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    _buildThemedUserInfo(theme, secondary),
-                    _buildActions(secondary),
-                    for (final tab in controller.mineTabs)
-                      switch (tab) {
-                        .favorite => Obx(_buildFav),
-                        .history => Obx(_buildHistory),
-                        .later => Obx(_buildLater),
-                        .sub => Obx(_buildSub),
-                      },
-                  ],
+    return Obx(() {
+      final service = BiliThemeService.instance;
+      final enabled = service.enabled.value;
+      final staticBg = enabled ? service.mineBg : null;
+      final videoBg = enabled && service.mineVideo.value
+          ? service.mineVideoFile
+          : null;
+      final hasThemeBackground = staticBg != null || videoBg != null;
+      final headerActions = Padding(
+        padding: const .symmetric(vertical: 10),
+        child: _buildHeaderActions,
+      );
+      return Column(
+        children: [
+          if (!hasThemeBackground) headerActions,
+          Expanded(
+            child: Material(
+              type: .transparency,
+              child: refreshIndicator(
+                onRefresh: controller.onRefresh,
+                child: onBuild(
+                  ListView(
+                    padding: const .only(bottom: 150),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      if (hasThemeBackground)
+                        _buildThemedHeader(
+                          service: service,
+                          actions: headerActions,
+                          staticBg: staticBg,
+                          videoBg: videoBg,
+                        )
+                      else
+                        _buildUserInfo(theme, secondary),
+                      _buildActions(secondary),
+                      for (final tab in controller.mineTabs)
+                        switch (tab) {
+                          .favorite => Obx(_buildFav),
+                          .history => Obx(_buildHistory),
+                          .later => Obx(_buildLater),
+                          .sub => Obx(_buildSub),
+                        },
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 
   Widget _buildActions(Color primary) {
@@ -250,21 +268,16 @@ class _MediaPageState extends CommonPageState<MinePage>
     );
   }
 
-  Widget _buildThemedUserInfo(ThemeData theme, Color secondary) => Obx(() {
-    final service = BiliThemeService.instance;
-    final enabled = service.enabled.value;
-    final staticBg = enabled ? service.mineBg : null;
-    final videoBg = enabled && service.mineVideo.value
-        ? service.mineVideoFile
-        : null;
-    if (staticBg == null && videoBg == null) {
-      return _buildUserInfo(theme, secondary);
-    }
-
+  Widget _buildThemedHeader({
+    required BiliThemeService service,
+    required Widget actions,
+    File? staticBg,
+    File? videoBg,
+  }) {
     final selectedIndex = _mainController.selectedIndex.value;
-    final isMine = selectedIndex < _mainController.navigationBars.length &&
-        _mainController.navigationBars[selectedIndex] ==
-            NavigationBarType.mine;
+    final isMine =
+        selectedIndex < _mainController.navigationBars.length &&
+        _mainController.navigationBars[selectedIndex] == NavigationBarType.mine;
     final isCurrentTab = isMine && _routeVisible.value;
     final height = (MediaQuery.sizeOf(context).height / 3)
         .clamp(220.0, 380.0)
@@ -299,20 +312,40 @@ class _MediaPageState extends CommonPageState<MinePage>
               ),
             ),
           ),
-          Center(
-            child: SizedBox(
-              width: double.infinity,
-              child: _buildUserInfo(
-                theme,
-                Colors.white,
-                onThemeBackground: true,
+          Column(
+            children: [
+              Theme(
+                data: theme.copyWith(
+                  iconTheme: theme.iconTheme.copyWith(color: Colors.white),
+                  iconButtonTheme: IconButtonThemeData(
+                    style: (theme.iconButtonTheme.style ?? const ButtonStyle())
+                        .copyWith(
+                          foregroundColor: const WidgetStatePropertyAll(
+                            Colors.white,
+                          ),
+                        ),
+                  ),
+                ),
+                child: actions,
               ),
-            ),
+              Expanded(
+                child: Center(
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _buildUserInfo(
+                      theme,
+                      Colors.white,
+                      onThemeBackground: true,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
-  });
+  }
 
   Widget _buildUserInfo(
     ThemeData theme,

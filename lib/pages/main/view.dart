@@ -394,24 +394,14 @@ class _MainAppState extends PopScopeState<MainApp>
 
   Widget _biliThemeBackground() => Obx(() {
     final service = BiliThemeService.instance;
-    final bg = service.enabled.value ? service.homeBg : null;
-    if (bg == null) return const SizedBox.shrink();
+    final seed = service.activeSeedColor;
+    if (seed == null) return const SizedBox.shrink();
     return IgnorePointer(
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.file(
-            bg,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-          ),
-          ColoredBox(
-            color: _colorScheme.surface.withValues(
-              alpha: service.bgOpacity.value,
-            ),
-          ),
-        ],
+      child: ColoredBox(
+        color: Color.alphaBlend(
+          _colorScheme.surface.withValues(alpha: service.bgOpacity.value),
+          Color(seed),
+        ),
       ),
     );
   });

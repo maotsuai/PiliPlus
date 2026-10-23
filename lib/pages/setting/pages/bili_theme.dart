@@ -140,7 +140,7 @@ class _BiliThemePageState extends State<BiliThemePage> {
               ),
               ListTile(
                 leading: const Icon(Icons.opacity_outlined),
-                title: const Text('首页背景遮罩浓度'),
+                title: const Text('一级页面背景淡化程度'),
                 subtitle: Slider(
                   value: service.bgOpacity.value,
                   divisions: 20,
