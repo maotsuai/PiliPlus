@@ -76,6 +76,40 @@ class BiliThemeSurface extends StatelessWidget {
   }
 }
 
+/// The category strip should transition into the page, rather than repeat the
+/// saturated header art. Fade only the artwork, never the tab labels/indicator.
+class BiliThemeTabBarSurface extends StatelessWidget {
+  const BiliThemeTabBarSurface({
+    super.key,
+    required this.file,
+    required this.backgroundColor,
+    required this.child,
+  });
+
+  static const imageOpacity = 0.18;
+
+  final File? file;
+  final Color backgroundColor;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (file == null) return child;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        image: DecorationImage(
+          image: FileImage(file!),
+          opacity: imageOpacity,
+          fit: BoxFit.cover,
+          onError: (_, _) {},
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
 /// Background owns the status-bar pixels; content starts below the safe inset.
 class BiliThemePrimaryHeader extends StatelessWidget {
   const BiliThemePrimaryHeader({
@@ -231,7 +265,13 @@ class RenderBiliThemeHeaderLayout extends RenderBox
     final childConstraints = BoxConstraints.tightFor(
       width: constraints.maxWidth,
     );
-    actions.layout(childConstraints, parentUsesSize: true);
+    // PlayerBar measures its left/right slots with an unbounded max width.
+    // Do not pass a tight min width: even its empty left slot would otherwise
+    // become screen-wide and trigger a spurious 50% overflow scale.
+    actions.layout(
+      BoxConstraints(maxWidth: constraints.maxWidth),
+      parentUsesSize: true,
+    );
     info.layout(childConstraints, parentUsesSize: true);
     final infoTop = topInset + actions.size.height;
     size = constraints.constrain(

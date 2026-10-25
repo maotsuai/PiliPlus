@@ -49,6 +49,13 @@ class _HomePageState extends CommonPageState<HomePage>
       final tabBg = service.enabled.value ? service.homeTabBg : null;
       final foreground =
           parseBiliThemeColor(service.appliedProperties?.color) ?? Colors.white;
+      final seed = service.activeSeedColor;
+      final tabBackground = seed == null
+          ? _colorScheme.surface
+          : Color.alphaBlend(
+              _colorScheme.surface.withValues(alpha: service.bgOpacity.value),
+              Color(seed),
+            );
       Widget tabBar;
       if (_homeController.tabs.length > 1) {
         tabBar = Padding(
@@ -57,11 +64,11 @@ class _HomePageState extends CommonPageState<HomePage>
             height: 42,
             width: double.infinity,
             child: TabBar(
-              labelColor: tabBg == null ? null : foreground,
+              labelColor: tabBg == null ? null : _colorScheme.onSurface,
               unselectedLabelColor: tabBg == null
                   ? null
-                  : foreground.withValues(alpha: 0.75),
-              indicatorColor: tabBg == null ? null : foreground,
+                  : _colorScheme.onSurfaceVariant,
+              indicatorColor: tabBg == null ? null : _colorScheme.primary,
               controller: _homeController.tabController,
               tabs: _homeController.tabs
                   .map((e) => Tab(text: e.label))
@@ -101,7 +108,11 @@ class _HomePageState extends CommonPageState<HomePage>
                   : const SizedBox.shrink(),
             ),
           ),
-          BiliThemeSurface(file: tabBg, foreground: foreground, child: tabBar),
+          BiliThemeTabBarSurface(
+            file: tabBg,
+            backgroundColor: tabBackground,
+            child: tabBar,
+          ),
           Expanded(
             child: onBuild(
               tabBarView(
