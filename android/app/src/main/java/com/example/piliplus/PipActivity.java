@@ -134,15 +134,13 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
     }
 
     @Override
-    protected void onPause() {
-        restoreState.paused();
-        super.onPause();
-    }
-
-    @Override
     protected void onStop() {
         super.onStop();
-        if (restoreState.shouldDismiss()) plugin.dismissed(this);
+        if (restoreState.stopped(isInPictureInPictureMode(), isFinishing())) {
+            plugin.restore(this);
+        } else if (restoreState.shouldDismiss(isFinishing())) {
+            plugin.dismissed(this);
+        }
     }
 
     @Override
@@ -156,9 +154,13 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
         stoppedByApp = true;
         entryState.close();
         restoreState.close();
-        finishAndRemoveTask();
+        // Direct-launch PiP may be reparented into the host's task on expansion.
+        // Finish only this window; the host owns its task and navigation stack.
+        finish();
         overridePendingTransition(0, 0);
     }
+
+    boolean isRestoring() { return restoreState.isRestoring(); }
 
     String startupState() {
         return "mode=" + isInPictureInPictureMode() + ", surface=" +

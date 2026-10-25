@@ -184,4 +184,32 @@ void main() {
     await starting;
     expect(events, ['stop']);
   });
+
+  test('restore marks ownership immediately but waits for the host', () async {
+    await session.didStart();
+    final ready = Completer<void>();
+    final restored = session.restore(ready: ready.future);
+    await Future<void>.value();
+    expect(session.restoring, isTrue);
+    expect(events, ['retain', 'pop page']);
+    ready.complete();
+    await Future<void>.value();
+    expect(events.last, 'push page');
+    session.completeRestore();
+    expect(await restored, isTrue);
+  });
+
+  test(
+    'closing while the host is paused cancels restoration promptly',
+    () async {
+      await session.didStart();
+      final ready = Completer<void>();
+      final restored = session.restore(ready: ready.future);
+      session.close();
+      expect(await restored, isFalse);
+      ready.complete();
+      await Future<void>.value();
+      expect(events, ['retain', 'pop page', 'stop']);
+    },
+  );
 }

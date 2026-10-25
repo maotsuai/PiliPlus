@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:PiliPlus/plugin/pl_player/utils/android_surface.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/pip_session.dart';
 import 'package:flutter/foundation.dart';
@@ -97,9 +99,20 @@ abstract final class SystemPipHelper {
         _restoreAndroidSurface();
         final session = _playback;
         if (session?.detached != true) return false;
-        // The new page acknowledges ownership in getInstance. One frame is not
-        // proof that navigation or the retained-player handoff has completed.
-        return session!.restore();
+        final waitForForeground =
+            value is Map && value['waitForForeground'] == true;
+        final foreground = waitForForeground ? _PipForegroundWaiter() : null;
+        try {
+          // Mark restoration immediately, before the native window is stopped.
+          // Navigation waits for MainActivity to be visible and ready to draw.
+          final restored = await session!.restore(ready: foreground?.ready);
+          if (restored && waitForForeground) {
+            await WidgetsBinding.instance.endOfFrame;
+          }
+          return restored;
+        } finally {
+          foreground?.dispose();
+        }
       case 'setPlaying':
         if (value as bool) {
           _play?.call();
@@ -195,5 +208,29 @@ abstract final class SystemPipHelper {
     _play = _pause = _onRestored = null;
     _skip = null;
     _channel.invokeMethod('dispose');
+  }
+}
+
+class _PipForegroundWaiter with WidgetsBindingObserver {
+  _PipForegroundWaiter() {
+    final binding = WidgetsBinding.instance;
+    if (binding.lifecycleState == AppLifecycleState.resumed) {
+      _ready.complete();
+    } else {
+      binding.addObserver(this);
+    }
+  }
+
+  final _ready = Completer<void>();
+  Future<void> get ready => _ready.future;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) dispose();
+  }
+
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (!_ready.isCompleted) _ready.complete();
   }
 }

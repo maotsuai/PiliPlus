@@ -38,7 +38,6 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     private boolean autoEnter;
     private boolean launching;
     private PipActivity playbackActivity;
-    private PipActivity pendingRestore;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -148,19 +147,19 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     }
 
     void surface(PipActivity activity, long wid, int width, int height) {
-        if (activity != playbackActivity) return;
+        if (activity != playbackActivity || activity.isRestoring()) return;
         channel.invokeMethod("surface", envelope(map("wid", wid, "width", width, "height", height)),
                 new MethodChannel.Result() {
                     @Override public void success(Object value) {
-                        if (activity != playbackActivity) return;
+                        if (activity != playbackActivity || activity.isRestoring()) return;
                         if (Boolean.TRUE.equals(value)) activity.surfaceAttached(wid, width, height);
                         else fail("Could not attach the playback surface");
                     }
                     @Override public void error(String code, String message, Object details) {
-                        if (activity == playbackActivity) fail(message);
+                        if (activity == playbackActivity && !activity.isRestoring()) fail(message);
                     }
                     @Override public void notImplemented() {
-                        if (activity == playbackActivity) fail("Surface handoff unavailable");
+                        if (activity == playbackActivity && !activity.isRestoring()) fail("Surface handoff unavailable");
                     }
                 });
     }
@@ -194,17 +193,10 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     void restore(PipActivity activity) {
         if (activity != playbackActivity) return;
         AndroidHelper.isPipMode = false;
-        pendingRestore = activity;
-        // MainActivity.onPostResume acknowledges the Flutter engine is resumed.
-        // Posting a Dart navigation request before that can silently lose it.
-        bringHostToFront();
-    }
-
-    public void onHostResumed() {
-        final PipActivity activity = pendingRestore;
-        if (activity == null || activity != playbackActivity) return;
-        pendingRestore = null;
-        channel.invokeMethod("restore", envelope(null), new MethodChannel.Result() {
+        // Queue restoration before raising the singleTask host: Android can
+        // destroy/reparent this Activity while bringing MainActivity forward.
+        // Dart marks the session restoring now and waits for its foreground frame.
+        channel.invokeMethod("restore", envelope(map("waitForForeground", true)), new MethodChannel.Result() {
             @Override public void success(Object value) {
                 if (activity != playbackActivity) return;
                 if (Boolean.TRUE.equals(value)) {
@@ -219,10 +211,11 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                 if (activity == playbackActivity) fail("Restore unavailable");
             }
         });
+        bringHostToFront();
     }
 
     void dismissed(PipActivity activity) {
-        if (activity != playbackActivity) return;
+        if (activity != playbackActivity || activity.isRestoring()) return;
         long id = sessionId();
         close();
         emitStopped(id, true);
@@ -269,7 +262,6 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
         launching = autoEnter = false;
         AndroidHelper.isPipMode = false;
         configuration = null;
-        pendingRestore = null;
         PipActivity activity = playbackActivity;
         playbackActivity = null;
         if (activity != null) activity.finishFromApp();

@@ -35,16 +35,33 @@ class PipPlaybackSession {
     }
   }
 
-  Future<bool> restore() async {
-    if (!detached) return false;
+  Future<bool> restore({Future<void>? ready}) {
+    if (!detached) return Future.value(false);
     if (restoring) return _restoreResult!.future;
     restoring = true;
     final generation = ++_generation;
     final result = _restoreResult = Completer<bool>();
-    // Expansion can arrive while the outgoing route is still animating away.
-    await _minimizing;
-    if (generation == _generation && detached && restoring) onRestore();
+    _restoreWhenReady(generation, result, ready);
     return result.future;
+  }
+
+  Future<void> _restoreWhenReady(
+    int generation,
+    Completer<bool> result,
+    Future<void>? ready,
+  ) async {
+    try {
+      // Expansion may precede the host's resume or the outgoing route's disposal.
+      await _minimizing;
+      if (ready != null) await ready;
+      if (generation == _generation && detached && restoring) onRestore();
+    } catch (error, stack) {
+      if (!result.isCompleted) result.completeError(error, stack);
+      if (identical(_restoreResult, result)) {
+        _restoreResult = null;
+        restoring = false;
+      }
+    }
   }
 
   bool completeRestore() {

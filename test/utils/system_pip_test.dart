@@ -61,6 +61,7 @@ void main() {
   }
 
   setUp(() async {
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     calls = [];
     events = [];
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, (
@@ -74,6 +75,7 @@ void main() {
 
   tearDown(() async {
     SystemPipHelper.dispose();
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await Future<void>.value();
     binding.defaultBinaryMessenger.setMockMethodCallHandler(channel, null);
   });
@@ -165,6 +167,60 @@ void main() {
     expect(acknowledged, isFalse);
     expect(SystemPipHelper.completeRestore(), isTrue);
     expect(await restored, isTrue);
+  });
+
+  testWidgets('Android expansion waits for the Flutter host to resume', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    final session = bind();
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    final restored = native('restore', id, {'waitForForeground': true});
+    await tester.pump();
+    expect(session.restoring, isTrue);
+    expect(events, ['retain', 'pop']);
+    // Even a delayed native stop must not release a restoring playback session.
+    await native('onStateChanged', id, {'active': false, 'closed': true});
+    expect(session.detached, isTrue);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(await restored, isTrue);
+    expect(events, ['retain', 'pop', 'push', 'handoff']);
+  });
+
+  testWidgets(
+    'Android expansion also restores when the host is already resumed',
+    (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SizedBox());
+      bind();
+      final id = await enter();
+      await native('onStateChanged', id, {'active': true, 'started': true});
+      final restored = native('restore', id, {'waitForForeground': true});
+      await tester.pumpAndSettle();
+      expect(await restored, isTrue);
+      expect(events, ['retain', 'pop', 'push', 'handoff']);
+    },
+  );
+
+  testWidgets('opening new playback cancels an Android foreground wait', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    bind();
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    final restored = native('restore', id, {'waitForForeground': true});
+    await tester.pump();
+    SystemPipHelper.closeForNewPlayback();
+    expect(await restored, isFalse);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(events, ['retain', 'pop', 'stop']);
   });
   test('the requested playback page can claim a pending restore', () async {
     final session = bind(completeOnRestore: false);
