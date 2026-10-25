@@ -38,7 +38,6 @@ void main() {
     SystemPipHelper.bind(
       session,
       playbackKey: () => 'video/42',
-      player: () => null,
       onPlay: () => events.add('play'),
       onPause: () => events.add('pause'),
       onSkip: (value) => events.add('skip $value'),

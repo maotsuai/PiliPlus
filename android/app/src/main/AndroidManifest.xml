@@ -236,7 +236,7 @@
             android:taskAffinity="${applicationId}.pip"
             android:resizeableActivity="true"
             android:supportsPictureInPicture="true"
-            android:theme="@android:style/Theme.Material.NoActionBar" />
+            android:theme="@style/PipTheme" />
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
             android:theme="@style/Ucrop.CropTheme" />

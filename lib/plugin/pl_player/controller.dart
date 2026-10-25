@@ -1,4 +1,4 @@
-import 'dart:async' show StreamSubscription, Timer;
+import 'dart:async' show FutureOr, StreamSubscription, Timer;
 import 'dart:convert' show ascii, utf8;
 import 'dart:io' show Platform;
 import 'dart:math' show max, min;
@@ -31,6 +31,8 @@ import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/playback_watchdog.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/pip_session.dart';
+import 'package:PiliPlus/plugin/pl_player/utils/android_surface.dart';
+import 'package:PiliPlus/plugin/pl_player/video_controller.dart';
 import 'package:PiliPlus/services/playback_background.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
@@ -360,16 +362,18 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   void bindPipPlayback({
     required String Function() playbackKey,
-    required VoidCallback onMinimize,
+    required FutureOr<void> Function() onMinimize,
     required VoidCallback onRestore,
   }) {
     if (!PlatformUtils.isMobile) return;
     final ownerTag = _playOwner?.tag;
+    int? handoffRequest;
     SystemPipHelper.bind(
       PipPlaybackSession(
         onRetain: () {
           _playerCount++;
           _pipRetained = true;
+          handoffRequest = _playRequest;
         },
         onRelease: (stop) {
           _pipRetained = false;
@@ -385,9 +389,24 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         },
         onMinimize: onMinimize,
         onRestore: onRestore,
+        onReady: () async {
+          // AVKit and removing the inline view can change the audio/render state.
+          // Reassert the existing play request once, after the route has gone.
+          // A user pause, interruption, source change or restoration takes priority.
+          if (Platform.isIOS &&
+              _pipRetained &&
+              _wantsToPlay &&
+              handoffRequest == _playRequest &&
+              identical(_instance, this)) {
+            await play();
+          }
+        },
       ),
       playbackKey: playbackKey,
-      player: () => _videoPlayerController,
+      androidSurface: () => switch (_videoController) {
+        AndroidSurfaceTarget target => target,
+        _ => null,
+      },
       onPlay: play,
       onPause: pause,
       onSkip: (offset) => seekTo(
@@ -439,7 +458,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   Map<String, Object> _systemPipState(PlayerState state, [Duration? position]) {
     return {
-      'isPlaying': playerStatus.isPlaying,
+      'isPlaying': _wantsToPlay && playerStatus.isPlaying,
       'isBuffering': isBuffering.value,
       'isLive': isLive,
       'position': (position ?? state.position).inMilliseconds,
@@ -914,7 +933,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     assert(_videoController == null);
 
-    _videoController = await VideoController.create(
+    _videoController = await createVideoController(
       player,
       configuration: VideoControllerConfiguration(
         enableHardwareAcceleration: hwdec != null,
@@ -1059,9 +1078,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       return;
     }
     await player.open(media, play: false);
-    if (Platform.isAndroid) {
-      SystemPipHelper.reattachAndroidSurface();
-    }
     // A pause, interruption, source change or disposal during open wins.
     if (!canRecover()) return;
     await player.play();
@@ -1207,9 +1223,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
       /// position
       stream.position.listen((Duration position) {
-        if (Platform.isAndroid && _pipRetained) {
-          SystemPipHelper.reattachAndroidSurface();
-        }
         _playbackWatchdog.onPosition(position);
         PlaybackBackground.onPosition(position);
         if (_recoveryPosition case final resume? when position > resume) {
@@ -1218,6 +1231,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         final posInSeconds = position.inSeconds;
 
         if (posInSeconds != this.position.value) {
+          if (Platform.isIOS) _updateSystemPip(position);
           if (posInSeconds == 0 && playerStatus.isPlaying) {
             _updatePlaybackState(position: position);
           }
@@ -1382,6 +1396,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (!activated) {
       _wantsToPlay = false;
       _syncBackgroundPlayback();
+      _updateSystemPip();
       return;
     }
     // 播放时自动隐藏控制条

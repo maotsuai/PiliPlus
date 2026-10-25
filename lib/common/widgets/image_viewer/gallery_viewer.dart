@@ -18,6 +18,7 @@
 import 'dart:async';
 import 'dart:io' show File, Platform;
 
+import 'package:PiliPlus/plugin/pl_player/video_controller.dart';
 import 'package:PiliPlus/common/widgets/colored_box_transition.dart';
 import 'package:PiliPlus/common/widgets/dialog/simple_dialog_option.dart';
 import 'package:PiliPlus/common/widgets/gesture/image_double_tap_gesture_recognizer.dart';
@@ -116,7 +117,7 @@ class _GalleryViewerState extends State<GalleryViewer>
   Future<void> _initPlayer() async {
     assert(_player == null);
     final player = await Player.create();
-    _videoController = await VideoController.create(player);
+    _videoController = await createVideoController(player);
     if (!mounted) {
       player.dispose();
       _videoController = null;

@@ -108,7 +108,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       playbackKey: () => 'live/${_liveRoomController.roomId}',
       onMinimize: () {
         restoreRoomId = _liveRoomController.roomId;
-        _leaveForPip();
+        return _leaveForPip();
       },
       onRestore: () => PageUtils.toLiveRoom(restoreRoomId),
     );
@@ -132,6 +132,9 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       }
     } else if (route.isActive) {
       navigator.removeRoute(route);
+    }
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      await route.completed;
     }
   }
 

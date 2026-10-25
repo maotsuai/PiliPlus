@@ -7,7 +7,6 @@ import android.graphics.Color;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.Rational;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.WindowManager;
@@ -22,12 +21,15 @@ public final class PipActivity extends Activity implements SurfaceHolder.Callbac
     private long surfaceReference;
     private PictureInPictureParams params;
     private boolean entered;
+    private boolean attachedSurface;
+    private boolean reportedStarted;
     private boolean enterRequested;
     private boolean stoppedByApp;
     private boolean restoring;
 
     @Override
     protected void onCreate(Bundle state) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) setTheme(R.style.LegacyPipTheme);
         super.onCreate(state);
         plugin = SystemPipPlugin.instance;
         sessionId = getIntent().getLongExtra("sessionId", -1);
@@ -36,28 +38,36 @@ public final class PipActivity extends Activity implements SurfaceHolder.Callbac
             return;
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().getDecorView().setBackgroundColor(Color.BLACK);
         video = new SurfaceView(this);
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) video.setAlpha(0);
         video.getHolder().addCallback(this);
         setContentView(video);
     }
 
     void updateParams() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || plugin == null) return;
-        int width = plugin.dimension("width", 16);
-        int height = plugin.dimension("height", 9);
-        double ratio = (double) width / height;
-        if (ratio < 1 / 2.39 || ratio > 2.39) {
-            width = width > height ? 16 : 9;
-            height = width == 16 ? 9 : 16;
-        }
-        PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(width, height));
         Rect rect = new Rect();
-        if (video != null && video.getGlobalVisibleRect(rect)) builder.setSourceRectHint(rect);
-        AndroidHelper.setPipActions(this, builder, plugin.state("isLive"), plugin.state("isPlaying"));
-        params = builder.build();
+        if (video != null) video.getGlobalVisibleRect(rect);
+        params = plugin.buildParams(rect);
         setPictureInPictureParams(params);
+    }
+
+    void surfaceAttached() {
+        attachedSurface = true;
+        if (isInPictureInPictureMode()) {
+            entered = true;
+            reportStarted();
+        } else {
+            enterPip();
+        }
+    }
+
+    private void reportStarted() {
+        if (!attachedSurface || reportedStarted || stoppedByApp) return;
+        reportedStarted = true;
+        video.setAlpha(1);
+        getWindow().getDecorView().setBackgroundColor(Color.BLACK);
+        plugin.started(this);
     }
 
     void enterPip() {
@@ -76,14 +86,14 @@ public final class PipActivity extends Activity implements SurfaceHolder.Callbac
         super.onPictureInPictureModeChanged(inPip, configuration);
         if (inPip && !entered) {
             entered = true;
-            plugin.started(this);
+            reportStarted();
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (entered && !isInPictureInPictureMode() && !stoppedByApp && !restoring) {
+        if (reportedStarted && !isInPictureInPictureMode() && !stoppedByApp && !restoring) {
             restoring = true;
             plugin.restore(this);
         }
@@ -92,7 +102,7 @@ public final class PipActivity extends Activity implements SurfaceHolder.Callbac
     @Override
     protected void onStop() {
         super.onStop();
-        if (entered && !stoppedByApp && !restoring) plugin.dismissed(this);
+        if (reportedStarted && !stoppedByApp && !restoring) plugin.dismissed(this);
     }
 
     @Override

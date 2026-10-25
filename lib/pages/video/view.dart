@@ -231,7 +231,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
           'isVertical': video.isVertical.value,
           if (video.isFileSource) 'entry': video.entry,
         };
-        _leaveForPip();
+        return _leaveForPip();
       },
       onRestore: () {
         final args = restoreArguments!;
@@ -265,6 +265,9 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       }
     } else if (route.isActive) {
       navigator.removeRoute(route);
+    }
+    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+      await route.completed;
     }
   }
 

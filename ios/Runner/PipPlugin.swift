@@ -244,10 +244,11 @@ private final class PipSession: NSObject {
     }
     if let value = (args["speed"] as? NSNumber)?.doubleValue { speed = value }
     if let position = (args["position"] as? NSNumber)?.int64Value {
-      let isBuffering = args["isBuffering"] as? Bool ?? false
       CMTimebaseSetRateAndAnchorTime(
         timebase,
-        rate: isPlaying && !isBuffering ? speed : 0,
+        // Decoded frames are already paced by mpv. A transient cache flag
+        // must not freeze AVKit's display clock after the inline view is gone.
+        rate: isPlaying ? speed : 0,
         anchorTime: CMTime(value: position, timescale: 1000),
         immediateSourceTime: CMClockGetTime(CMClockGetHostTimeClock())
       )

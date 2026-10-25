@@ -1,11 +1,9 @@
-import 'dart:io';
-
+import 'package:PiliPlus/plugin/pl_player/utils/android_surface.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/pip_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
-import 'package:media_kit/media_kit.dart';
 
 /// Native system PiP on iOS and a dedicated video Activity on Android.
 abstract final class SystemPipHelper {
@@ -18,15 +16,11 @@ abstract final class SystemPipHelper {
   static PipPlaybackSession? _playback;
   static String Function()? _playbackKey;
   static String? _activeKey;
-  static NativePlayer? Function()? _getPlayer;
+  static AndroidSurfaceTarget? Function()? _androidSurface;
   static VoidCallback? _play;
   static VoidCallback? _pause;
   static ValueChanged<int>? _skip;
   static VoidCallback? _onRestored;
-  static String? _inlineSurface;
-  static String? _inlineSurfaceSize;
-  static String? _pipSurface;
-  static String? _pipSurfaceSize;
   static bool get needsUpdate => isActive || _autoEnter;
   static bool get isDetached => _playback?.detached == true;
 
@@ -42,7 +36,7 @@ abstract final class SystemPipHelper {
   static void bind(
     PipPlaybackSession session, {
     required String Function() playbackKey,
-    required NativePlayer? Function() player,
+    AndroidSurfaceTarget? Function()? androidSurface,
     required VoidCallback onPlay,
     required VoidCallback onPause,
     required ValueChanged<int> onSkip,
@@ -50,7 +44,7 @@ abstract final class SystemPipHelper {
   }) {
     _playback = session;
     _playbackKey = playbackKey;
-    _getPlayer = player;
+    _androidSurface = androidSurface;
     _play = onPlay;
     _pause = onPause;
     _skip = onSkip;
@@ -64,29 +58,19 @@ abstract final class SystemPipHelper {
     switch (call.method) {
       case 'surface':
         final args = value as Map;
-        final player = _getPlayer?.call();
-        if (player == null) return false;
-        _inlineSurface ??= player.getProperty('wid');
-        _inlineSurfaceSize ??= player.getProperty('android-surface-size');
-        _pipSurfaceSize = '${args['width']}x${args['height']}';
-        final surface = args['wid'].toString();
-        if (_pipSurface == surface) {
-          player.setProperty('android-surface-size', _pipSurfaceSize!);
-          return true;
-        }
-        _pipSurface = surface;
-        player
-          ..setProperty('vo', 'null')
-          ..setProperty('android-surface-size', _pipSurfaceSize!)
-          ..setProperty('wid', _pipSurface!)
-          ..setProperty('vo', 'gpu');
-        return true;
+        return _androidSurface?.call()?.attachExternalSurface(
+              args['wid'] as int,
+              args['width'] as int,
+              args['height'] as int,
+            ) ??
+            false;
       case 'onStateChanged':
         final args = value as Map;
         isActive = args['active'] as bool;
         if (args['started'] == true) {
           _activeKey = _playbackKey?.call();
-          _playback?.didStart();
+          await _playback?.didStart();
+          if (envelope['sessionId'] != _sessionId) return false;
         }
         if (args['error'] != null) {
           _restoreAndroidSurface();
@@ -169,36 +153,8 @@ abstract final class SystemPipHelper {
     _channel.invokeMethod('update', state);
   }
 
-  /// media_kit may recreate its inline surface when reconnecting a live stream.
-  static void reattachAndroidSurface() {
-    if (_pipSurface case final surface? when Platform.isAndroid && isDetached) {
-      final player = _getPlayer?.call();
-      if (player == null) return;
-      final inline = player.getProperty('wid');
-      if (inline == surface) return;
-      _inlineSurface = inline;
-      _inlineSurfaceSize = player.getProperty('android-surface-size');
-      player
-        ..setProperty('vo', 'null')
-        ..setProperty('android-surface-size', _pipSurfaceSize!)
-        ..setProperty('wid', surface)
-        ..setProperty('vo', 'gpu');
-    }
-  }
-
   static void _restoreAndroidSurface() {
-    if (Platform.isAndroid && _inlineSurface != null) {
-      if (_getPlayer?.call() case final player?) {
-        player.setProperty('vo', 'null');
-        if (_inlineSurfaceSize case final size?) {
-          player.setProperty('android-surface-size', size);
-        }
-        player
-          ..setProperty('wid', _inlineSurface!)
-          ..setProperty('vo', 'gpu');
-      }
-    }
-    _inlineSurface = _inlineSurfaceSize = _pipSurface = _pipSurfaceSize = null;
+    _androidSurface?.call()?.detachExternalSurface();
   }
 
   static void closeForNewPlayback({String? playbackKey}) {
@@ -235,7 +191,7 @@ abstract final class SystemPipHelper {
     _playback = null;
     _playbackKey = null;
     _activeKey = null;
-    _getPlayer = null;
+    _androidSurface = null;
     _play = _pause = _onRestored = null;
     _skip = null;
     _channel.invokeMethod('dispose');

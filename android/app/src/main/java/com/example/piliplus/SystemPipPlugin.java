@@ -1,12 +1,16 @@
 package com.example.piliplus;
 
 import android.app.Activity;
+import android.app.ActivityOptions;
+import android.app.PictureInPictureParams;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.graphics.Rect;
+import android.util.Rational;
 import android.view.Surface;
 
 import androidx.annotation.NonNull;
@@ -109,7 +113,11 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     .putExtra("sessionId", id)
                     .putExtra("leavingApp", leavingApp);
-            host.startActivity(intent);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                host.startActivity(intent, ActivityOptions.makeLaunchIntoPip(buildParams(null)).toBundle());
+            } else {
+                host.startActivity(intent, ActivityOptions.makeCustomAnimation(host, 0, 0).toBundle());
+            }
             handler.postDelayed(() -> {
                 if (launching && sessionId() == id) fail("PiP activity did not start");
             }, 3000);
@@ -141,7 +149,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                 new MethodChannel.Result() {
                     @Override public void success(Object value) {
                         if (activity != playbackActivity) return;
-                        if (Boolean.TRUE.equals(value)) activity.enterPip();
+                        if (Boolean.TRUE.equals(value)) activity.surfaceAttached();
                         else fail("Could not attach the playback surface");
                     }
                     @Override public void error(String code, String message, Object details) {
@@ -158,7 +166,25 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
         launching = false;
         AndroidHelper.isPipMode = true;
         emit("onStateChanged", map("active", true, "started", true));
-        if (!activity.getIntent().getBooleanExtra("leavingApp", false)) bringHostToFront();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU &&
+                !activity.getIntent().getBooleanExtra("leavingApp", false)) bringHostToFront();
+    }
+
+    PictureInPictureParams buildParams(Rect source) {
+        int width = dimension("width", 16);
+        int height = dimension("height", 9);
+        double ratio = (double) width / height;
+        if (ratio < 1 / 2.39 || ratio > 2.39) {
+            width = width > height ? 16 : 9;
+            height = width == 16 ? 9 : 16;
+        }
+        PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(width, height));
+        if (source != null && !source.isEmpty()) builder.setSourceRectHint(source);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) builder.setSeamlessResizeEnabled(true);
+        Context context = host != null ? host : applicationContext;
+        AndroidHelper.setPipActions(context, builder, state("isLive"), state("isPlaying"));
+        return builder.build();
     }
 
     void restore(PipActivity activity) {

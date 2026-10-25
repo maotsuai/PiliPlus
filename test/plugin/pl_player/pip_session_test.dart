@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:PiliPlus/plugin/pl_player/utils/pip_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -60,4 +62,61 @@ void main() {
     expect(events.last, 'stop');
     expect(session.detached, isFalse);
   });
+
+  test(
+    'playback handoff finishes after the outgoing route is disposed',
+    () async {
+      final pageGone = Completer<void>();
+      session = PipPlaybackSession(
+        onRetain: () => events.add('retain'),
+        onRelease: (_) => events.add('release'),
+        onMinimize: () => pageGone.future,
+        onRestore: () {},
+        onReady: () async => events.add('ready'),
+      );
+      final starting = session.didStart();
+      expect(events, ['retain']);
+      pageGone.complete();
+      await starting;
+      expect(events, ['retain', 'ready']);
+    },
+  );
+
+  test(
+    'closing during route removal cannot resume detached playback later',
+    () async {
+      final pageGone = Completer<void>();
+      session = PipPlaybackSession(
+        onRetain: () => events.add('retain'),
+        onRelease: (_) => events.add('stop'),
+        onMinimize: () => pageGone.future,
+        onRestore: () {},
+        onReady: () async => events.add('unexpected resume'),
+      );
+      final starting = session.didStart();
+      session.close();
+      pageGone.complete();
+      await starting;
+      expect(events, ['retain', 'stop']);
+    },
+  );
+
+  test(
+    'expanding during route removal cancels the late playback handoff',
+    () async {
+      final pageGone = Completer<void>();
+      session = PipPlaybackSession(
+        onRetain: () {},
+        onRelease: (_) {},
+        onMinimize: () => pageGone.future,
+        onRestore: () => events.add('restore'),
+        onReady: () async => events.add('unexpected resume'),
+      );
+      final starting = session.didStart();
+      session.restore();
+      pageGone.complete();
+      await starting;
+      expect(events, ['restore']);
+    },
+  );
 }
