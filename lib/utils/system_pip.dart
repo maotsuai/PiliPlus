@@ -96,10 +96,10 @@ abstract final class SystemPipHelper {
       case 'restore':
         _restoreAndroidSurface();
         final session = _playback;
-        if (session?.detached != true) return true;
-        session!.restore();
-        await WidgetsBinding.instance.endOfFrame;
-        return !session.detached;
+        if (session?.detached != true) return false;
+        // The new page acknowledges ownership in getInstance. One frame is not
+        // proof that navigation or the retained-player handoff has completed.
+        return session!.restore();
       case 'setPlaying':
         if (value as bool) {
           _play?.call();

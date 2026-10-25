@@ -39,6 +39,11 @@ class MainActivity : AudioServiceActivity() {
         super.onDestroy()
     }
 
+    override fun onPostResume() {
+        super.onPostResume()
+        SystemPipPlugin.instance?.onHostResumed()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (SystemPipPlugin.instance?.onUserLeaveHint() == true) return

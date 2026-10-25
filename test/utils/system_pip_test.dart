@@ -31,7 +31,7 @@ void main() {
       onRestore: () {
         events.add('push');
         if (completeOnRestore) {
-          expect(SystemPipHelper.completeRestore(), isTrue);
+          expectSync(SystemPipHelper.completeRestore(), isTrue);
         }
       },
     );
@@ -146,6 +146,26 @@ void main() {
       expect(events, ['retain', 'pop', 'pause', 'play', 'skip 10000']);
     },
   );
+
+  testWidgets('restore acknowledgment waits beyond the first frame', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    bind(completeOnRestore: false);
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    var acknowledged = false;
+    final restored = native('restore', id).then((value) {
+      acknowledged = true;
+      return value;
+    });
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(events, ['retain', 'pop', 'push']);
+    expect(acknowledged, isFalse);
+    expect(SystemPipHelper.completeRestore(), isTrue);
+    expect(await restored, isTrue);
+  });
   test('the requested playback page can claim a pending restore', () async {
     final session = bind(completeOnRestore: false);
     final id = await enter();

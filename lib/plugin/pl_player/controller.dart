@@ -367,13 +367,11 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   }) {
     if (!PlatformUtils.isMobile) return;
     final ownerTag = _playOwner?.tag;
-    int? handoffRequest;
     SystemPipHelper.bind(
       PipPlaybackSession(
         onRetain: () {
           _playerCount++;
           _pipRetained = true;
-          handoffRequest = _playRequest;
         },
         onRelease: (stop) {
           _pipRetained = false;
@@ -389,16 +387,25 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         },
         onMinimize: onMinimize,
         onRestore: onRestore,
-        onReady: () async {
-          // AVKit and removing the inline view can change the audio/render state.
-          // Reassert the existing play request once, after the route has gone.
-          // A user pause, interruption, source change or restoration takes priority.
+        onReady: (isCurrent) async {
+          // AVKit's transition can stall an output that still reports playing.
+          // A real pause -> play edge restarts that output; repeating play alone
+          // does not. Do this once, after the outgoing route is disposed.
           if (Platform.isIOS &&
+              isCurrent() &&
               _pipRetained &&
               _wantsToPlay &&
-              handoffRequest == _playRequest &&
               identical(_instance, this)) {
-            await play();
+            final request = _playRequest;
+            await _videoPlayerController?.pause();
+            // A user pause, interruption or new source wins the race.
+            // Expansion may hand ownership back while pause is in flight. The
+            // same play request must still resume on that page in this case.
+            if (request == _playRequest &&
+                _wantsToPlay &&
+                identical(_instance, this)) {
+              await play();
+            }
           }
         },
       ),

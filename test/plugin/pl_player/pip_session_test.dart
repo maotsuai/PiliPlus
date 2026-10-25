@@ -39,25 +39,30 @@ void main() {
     expect(events, ['retain', 'pop page', 'stop']);
   });
 
-  test('expanding restores the page before releasing without stopping', () {
-    session
-      ..didStart()
-      ..restore()
-      ..restore();
-    expect(session.detached, isTrue);
-    expect(session.restoring, isTrue);
-    expect(events, ['retain', 'pop page', 'push page']);
-    expect(session.completeRestore(), isTrue);
-    expect(session.completeRestore(), isFalse);
-    session.close();
-    expect(events, ['retain', 'pop page', 'push page', 'handoff']);
-  });
+  test(
+    'expanding restores the page before releasing without stopping',
+    () async {
+      await session.didStart();
+      final restored = session.restore();
+      final duplicate = session.restore();
+      await Future<void>.value();
+      expect(session.detached, isTrue);
+      expect(session.restoring, isTrue);
+      expect(events, ['retain', 'pop page', 'push page']);
+      expect(session.completeRestore(), isTrue);
+      expect(session.completeRestore(), isFalse);
+      expect(await restored, isTrue);
+      expect(await duplicate, isTrue);
+      session.close();
+      expect(events, ['retain', 'pop page', 'push page', 'handoff']);
+    },
+  );
 
-  test('closing during restoration cancels the handoff', () {
-    session
-      ..didStart()
-      ..restore()
-      ..close();
+  test('closing during restoration cancels the handoff', () async {
+    await session.didStart();
+    final restored = session.restore();
+    session.close();
+    expect(await restored, isFalse);
     expect(session.completeRestore(), isFalse);
     expect(events.last, 'stop');
     expect(session.detached, isFalse);
@@ -72,7 +77,7 @@ void main() {
         onRelease: (_) => events.add('release'),
         onMinimize: () => pageGone.future,
         onRestore: () {},
-        onReady: () async => events.add('ready'),
+        onReady: (_) async => events.add('ready'),
       );
       final starting = session.didStart();
       expect(events, ['retain']);
@@ -91,7 +96,7 @@ void main() {
         onRelease: (_) => events.add('stop'),
         onMinimize: () => pageGone.future,
         onRestore: () {},
-        onReady: () async => events.add('unexpected resume'),
+        onReady: (_) async => events.add('unexpected resume'),
       );
       final starting = session.didStart();
       session.close();
@@ -109,14 +114,74 @@ void main() {
         onRetain: () {},
         onRelease: (_) {},
         onMinimize: () => pageGone.future,
-        onRestore: () => events.add('restore'),
-        onReady: () async => events.add('unexpected resume'),
+        onRestore: () {
+          events.add('restore');
+          session.completeRestore();
+        },
+        onReady: (_) async => events.add('unexpected resume'),
       );
       final starting = session.didStart();
-      session.restore();
+      final restored = session.restore();
+      expect(events, isEmpty);
       pageGone.complete();
       await starting;
+      expect(await restored, isTrue);
       expect(events, ['restore']);
     },
   );
+
+  test('restore waits for the destination page to acquire playback', () async {
+    await session.didStart();
+    var finished = false;
+    final restored = session.restore().then((value) {
+      finished = true;
+      return value;
+    });
+    await Future<void>.value();
+    expect(events.last, 'push page');
+    expect(finished, isFalse);
+    session.completeRestore();
+    expect(await restored, isTrue);
+  });
+
+  test(
+    'close before route removal cancels pending restore navigation',
+    () async {
+      final pageGone = Completer<void>();
+      session = PipPlaybackSession(
+        onRetain: () {},
+        onRelease: (_) => events.add('stop'),
+        onMinimize: () => pageGone.future,
+        onRestore: () => events.add('unexpected push'),
+      );
+      final starting = session.didStart();
+      final restored = session.restore();
+      session.close();
+      pageGone.complete();
+      await starting;
+      expect(await restored, isFalse);
+      expect(events, ['stop']);
+    },
+  );
+
+  test('an async handoff observes cancellation after it starts', () async {
+    final paused = Completer<void>();
+    session = PipPlaybackSession(
+      onRetain: () {},
+      onRelease: (_) => events.add('stop'),
+      onMinimize: () {},
+      onRestore: () {},
+      onReady: (isCurrent) async {
+        expect(isCurrent(), isTrue);
+        await paused.future;
+        if (isCurrent()) events.add('unexpected play');
+      },
+    );
+    final starting = session.didStart();
+    await Future<void>.value();
+    session.close();
+    paused.complete();
+    await starting;
+    expect(events, ['stop']);
+  });
 }

@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.graphics.Rect;
+import android.graphics.SurfaceTexture;
 import android.util.Rational;
 import android.view.Surface;
 
@@ -36,6 +37,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     private boolean autoEnter;
     private boolean launching;
     private PipActivity playbackActivity;
+    private PipActivity pendingRestore;
     private final Handler handler = new Handler(Looper.getMainLooper());
 
     @Override
@@ -110,7 +112,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
         emit("onStateChanged", map("active", true));
         try {
             Intent intent = new Intent(host, PipActivity.class)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION)
                     .putExtra("sessionId", id)
                     .putExtra("leavingApp", leavingApp);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -190,13 +192,23 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     void restore(PipActivity activity) {
         if (activity != playbackActivity) return;
         AndroidHelper.isPipMode = false;
-        // Resume the Flutter engine before Dart waits for the restored page's frame.
+        pendingRestore = activity;
+        // MainActivity.onPostResume acknowledges the Flutter engine is resumed.
+        // Posting a Dart navigation request before that can silently lose it.
         bringHostToFront();
+    }
+
+    public void onHostResumed() {
+        final PipActivity activity = pendingRestore;
+        if (activity == null || activity != playbackActivity) return;
+        pendingRestore = null;
         channel.invokeMethod("restore", envelope(null), new MethodChannel.Result() {
             @Override public void success(Object value) {
                 if (activity != playbackActivity) return;
-                close();
-                emitStopped(activity.sessionId, false);
+                if (Boolean.TRUE.equals(value)) {
+                    close();
+                    emitStopped(activity.sessionId, false);
+                }
             }
             @Override public void error(String code, String message, Object details) {
                 if (activity == playbackActivity) fail(message);
@@ -224,7 +236,9 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     private void bringHostToFront() {
         Context context = host != null ? host : applicationContext;
         if (context != null) context.startActivity(new Intent(context, MainActivity.class)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT |
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION),
+                ActivityOptions.makeCustomAnimation(context, 0, 0).toBundle());
     }
 
     private static Map<String, Object> map(Object... entries) {
@@ -251,6 +265,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
         launching = autoEnter = false;
         AndroidHelper.isPipMode = false;
         configuration = null;
+        pendingRestore = null;
         PipActivity activity = playbackActivity;
         playbackActivity = null;
         if (activity != null) activity.finishFromApp();
@@ -259,9 +274,13 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     static Activity pipActivity() { return instance == null ? null : instance.playbackActivity; }
 
     static long retainSurface(Surface surface) { return MediaKitAndroidHelper.newGlobalObjectRef(surface); }
-    static void releaseSurface(long reference) {
+    static void releaseSurface(long reference, Surface surface, SurfaceTexture texture) {
         // mpv drops the old output asynchronously, just as media_kit does.
         new Handler(Looper.getMainLooper()).postDelayed(
-                () -> MediaKitAndroidHelper.deleteGlobalObjectRef(reference), 5000);
+                () -> {
+                    if (reference != 0) MediaKitAndroidHelper.deleteGlobalObjectRef(reference);
+                    if (surface != null) surface.release();
+                    if (texture != null) texture.release();
+                }, 5000);
     }
 }
