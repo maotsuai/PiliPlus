@@ -27,6 +27,7 @@ class FloatingNavigationBar extends StatelessWidget {
     required this.destinations,
     this.onDestinationSelected,
     this.backgroundColor,
+    this.backgroundImage,
     this.elevation,
     this.shadowColor,
     this.surfaceTintColor,
@@ -45,6 +46,7 @@ class FloatingNavigationBar extends StatelessWidget {
   final List<Widget> destinations;
   final ValueChanged<int>? onDestinationSelected;
   final Color? backgroundColor;
+  final DecorationImage? backgroundImage;
   final double? elevation;
   final Color? shadowColor;
   final Color? surfaceTintColor;
@@ -86,6 +88,7 @@ class FloatingNavigationBar extends StatelessWidget {
         width: destinations.length * _kIndicatorWidth,
         child: DecoratedBox(
           decoration: ShapeDecoration(
+            image: backgroundImage,
             color: ElevationOverlay.applySurfaceTint(
               backgroundColor ??
                   navigationBarTheme.backgroundColor ??
