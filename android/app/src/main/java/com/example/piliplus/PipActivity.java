@@ -22,11 +22,10 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
     private Surface surface;
     private long surfaceReference;
     private PictureInPictureParams params;
-    private boolean entered;
     private boolean attachedSurface;
     private boolean reportedStarted;
-    private boolean enterRequested;
     private boolean stoppedByApp;
+    private final PipEntryState entryState = new PipEntryState();
     private final PipRestoreState restoreState = new PipRestoreState();
 
     @Override
@@ -39,23 +38,26 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
             return;
         }
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // Unlike SurfaceView on older Android versions, TextureView's alpha
-        // reliably hides its separate video output during the transparent launch.
+        // Prepare a transparent output without covering the inline video with a
+        // separate SurfaceView window. mpv attaches only after PiP is confirmed.
         video = new TextureView(this);
         video.setOpaque(false);
-        video.setAlpha(0);
         video.setSurfaceTextureListener(this);
         setContentView(video);
-        if (isInPictureInPictureMode()) showPipContent();
+        if (isInPictureInPictureMode()) confirmPipMode();
     }
 
     @Override
     protected void onPostResume() {
         super.onPostResume();
-        // Do not wait for Surface creation + a Dart round trip before asking the
-        // OS to shrink the legacy Activity. Those can finish inside PiP.
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU &&
-                !reportedStarted && !isInPictureInPictureMode()) enterPip();
+        // makeLaunchIntoPip is an optimization, not an acknowledgment. Some
+        // systems still resume this Activity normally; explicitly enter there.
+        // Give direct entry its first frame before applying this fallback.
+        video.postDelayed(() -> {
+            if (stoppedByApp || reportedStarted || isFinishing()) return;
+            if (isInPictureInPictureMode()) confirmPipMode();
+            else enterPip();
+        }, Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? 100 : 0);
     }
 
     void updateParams() {
@@ -66,10 +68,10 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
         setPictureInPictureParams(params);
     }
 
-    void surfaceAttached() {
+    void surfaceAttached(long reference, int width, int height) {
+        if (!entryState.confirmOutput(reference, width, height)) return;
         attachedSurface = true;
         if (isInPictureInPictureMode()) {
-            entered = true;
             reportStarted();
         }
     }
@@ -83,15 +85,27 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
     }
 
     private void showPipContent() {
-        // Allow TextureView to create/draw its hardware layer as soon as PiP is
-        // visible, even if Surface attachment has not completed yet.
-        video.setAlpha(1);
         getWindow().getDecorView().setBackgroundColor(Color.BLACK);
     }
 
+    private void confirmPipMode() {
+        entryState.modeChanged(true);
+        showPipContent();
+        attachPipOutput();
+    }
+
+    private void attachPipOutput() {
+        PipEntryState.Output output = entryState.takeOutput();
+        if (output != null) plugin.surface(this, output.reference, output.width, output.height);
+    }
+
     void enterPip() {
-        if (entered || enterRequested || isFinishing()) return;
-        enterRequested = true;
+        if (isFinishing() || stoppedByApp) return;
+        if (isInPictureInPictureMode()) {
+            confirmPipMode();
+            return;
+        }
+        if (!entryState.requestEntry()) return;
         try {
             updateParams();
             if (!enterPictureInPictureMode(params)) plugin.fail("System rejected PiP");
@@ -103,11 +117,10 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
     @Override
     public void onPictureInPictureModeChanged(boolean inPip, Configuration configuration) {
         super.onPictureInPictureModeChanged(inPip, configuration);
-        if (inPip && !entered) {
-            entered = true;
-            showPipContent();
-            reportStarted();
-        } else if (!inPip) {
+        entryState.modeChanged(inPip);
+        if (inPip) {
+            confirmPipMode();
+        } else {
             if (!isFinishing() && restoreState.modeChanged(false)) plugin.restore(this);
         }
     }
@@ -141,9 +154,15 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
 
     void finishFromApp() {
         stoppedByApp = true;
+        entryState.close();
         restoreState.close();
         finishAndRemoveTask();
         overridePendingTransition(0, 0);
+    }
+
+    String startupState() {
+        return "mode=" + isInPictureInPictureMode() + ", surface=" +
+                (surfaceReference != 0) + ", attached=" + attachedSurface;
     }
 
     @Override
@@ -155,7 +174,11 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
 
     @Override
     public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture texture, int width, int height) {
-        if (!stoppedByApp) plugin.surface(this, surfaceReference, width, height);
+        if (stoppedByApp) return;
+        entryState.surfaceChanged(surfaceReference, width, height);
+        // Keep mpv on its inline output until Android confirms the window is PiP.
+        // A failed launch must never steal and then reset the inline Surface.
+        attachPipOutput();
     }
 
     @Override
@@ -166,6 +189,7 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
     }
 
     private void releaseVideoSurface(SurfaceTexture texture) {
+        entryState.surfaceChanged(0, 0, 0);
         SystemPipPlugin.releaseSurface(surfaceReference, surface, texture);
         surfaceReference = 0;
         surface = null;

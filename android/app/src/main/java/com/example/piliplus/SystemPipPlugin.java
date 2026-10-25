@@ -12,6 +12,7 @@ import android.os.Looper;
 import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
 import android.util.Rational;
+import android.util.Log;
 import android.view.Surface;
 
 import androidx.annotation.NonNull;
@@ -121,7 +122,8 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                 host.startActivity(intent, ActivityOptions.makeCustomAnimation(host, 0, 0).toBundle());
             }
             handler.postDelayed(() -> {
-                if (launching && sessionId() == id) fail("PiP activity did not start");
+                if (launching && sessionId() == id) fail("PiP startup timed out: " +
+                        (playbackActivity == null ? "Activity missing" : playbackActivity.startupState()));
             }, 3000);
         } catch (RuntimeException error) {
             fail(error.toString());
@@ -151,7 +153,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                 new MethodChannel.Result() {
                     @Override public void success(Object value) {
                         if (activity != playbackActivity) return;
-                        if (Boolean.TRUE.equals(value)) activity.surfaceAttached();
+                        if (Boolean.TRUE.equals(value)) activity.surfaceAttached(wid, width, height);
                         else fail("Could not attach the playback surface");
                     }
                     @Override public void error(String code, String message, Object details) {
@@ -227,6 +229,8 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
     }
 
     void fail(String message) {
+        Log.w("PiliPlus/PiP", "session=" + sessionId() + " sdk=" + Build.VERSION.SDK_INT +
+                " device=" + Build.MANUFACTURER + "/" + Build.MODEL + ": " + message);
         long id = sessionId();
         close();
         channel.invokeMethod("onStateChanged", map("sessionId", id,
