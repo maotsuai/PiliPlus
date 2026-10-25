@@ -1,4 +1,5 @@
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/bili_theme.dart';
 import 'package:PiliPlus/common/widgets/custom_height_widget.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
 import 'package:PiliPlus/common/widgets/scroll_physics.dart' show tabBarView;
@@ -6,6 +7,7 @@ import 'package:PiliPlus/pages/common/common_page.dart';
 import 'package:PiliPlus/pages/home/controller.dart';
 import 'package:PiliPlus/pages/main/controller.dart';
 import 'package:PiliPlus/pages/mine/controller.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
@@ -41,63 +43,83 @@ class _HomePageState extends CommonPageState<HomePage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    Widget tabBar;
-    if (_homeController.tabs.length > 1) {
-      tabBar = Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: SizedBox(
-          height: 42,
-          width: double.infinity,
-          child: TabBar(
-            controller: _homeController.tabController,
-            tabs: _homeController.tabs.map((e) => Tab(text: e.label)).toList(),
-            isScrollable: true,
-            dividerColor: Colors.transparent,
-            dividerHeight: 0,
-            splashBorderRadius: Style.mdRadius,
-            tabAlignment: TabAlignment.center,
-            onTap: (_) {
-              feedBack();
-              if (!_homeController.tabController.indexIsChanging) {
-                _homeController.animateToTop();
-              }
-            },
-          ),
-        ),
-      );
-      if (_homeController.hideTopBar &&
-          _mainController.barHideType == .instant) {
-        tabBar = Material(
-          color: _colorScheme.surface,
-          child: tabBar,
-        );
-      }
-    } else {
-      tabBar = const SizedBox(height: 6);
-    }
-    return Column(
-      children: [
-        if (!_mainController.useSideBar &&
-            MediaQuery.sizeOf(context).isPortrait)
-          customAppBar(),
-        tabBar,
-        Expanded(
-          child: onBuild(
-            tabBarView(
+    return Obx(() {
+      final service = BiliThemeService.instance;
+      final headerBg = service.enabled.value ? service.homeHeaderBg : null;
+      final tabBg = service.enabled.value ? service.homeTabBg : null;
+      final foreground =
+          parseBiliThemeColor(service.appliedProperties?.color) ?? Colors.white;
+      Widget tabBar;
+      if (_homeController.tabs.length > 1) {
+        tabBar = Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: SizedBox(
+            height: 42,
+            width: double.infinity,
+            child: TabBar(
+              labelColor: tabBg == null ? null : foreground,
+              unselectedLabelColor: tabBg == null
+                  ? null
+                  : foreground.withValues(alpha: 0.75),
+              indicatorColor: tabBg == null ? null : foreground,
               controller: _homeController.tabController,
-              children: _homeController.tabs.map((e) => e.page).toList(),
+              tabs: _homeController.tabs
+                  .map((e) => Tab(text: e.label))
+                  .toList(),
+              isScrollable: true,
+              dividerColor: Colors.transparent,
+              dividerHeight: 0,
+              splashBorderRadius: Style.mdRadius,
+              tabAlignment: TabAlignment.center,
+              onTap: (_) {
+                feedBack();
+                if (!_homeController.tabController.indexIsChanging) {
+                  _homeController.animateToTop();
+                }
+              },
             ),
           ),
-        ),
-      ],
-    );
+        );
+        if (_homeController.hideTopBar &&
+            _mainController.barHideType == .instant &&
+            tabBg == null) {
+          tabBar = Material(color: _colorScheme.surface, child: tabBar);
+        }
+      } else {
+        tabBar = const SizedBox(height: 6);
+      }
+      return Column(
+        children: [
+          BiliThemePrimaryHeader(
+            file: headerBg,
+            foreground: headerBg == null ? null : foreground,
+            child: ClipRect(
+              child:
+                  !_mainController.useSideBar &&
+                      MediaQuery.sizeOf(context).isPortrait
+                  ? customAppBar(headerBg == null ? null : foreground)
+                  : const SizedBox.shrink(),
+            ),
+          ),
+          BiliThemeSurface(file: tabBg, foreground: foreground, child: tabBar),
+          Expanded(
+            child: onBuild(
+              tabBarView(
+                controller: _homeController.tabController,
+                children: _homeController.tabs.map((e) => e.page).toList(),
+              ),
+            ),
+          ),
+        ],
+      );
+    });
   }
 
-  Widget customAppBar() {
+  Widget customAppBar(Color? foreground) {
     const padding = EdgeInsets.fromLTRB(14, 6, 14, 0);
     final child = Row(
       children: [
-        searchBar(),
+        searchBar(foreground),
         const SizedBox(width: 4),
         msgBadge(_mainController),
         const SizedBox(width: 8),
@@ -144,19 +166,21 @@ class _HomePageState extends CommonPageState<HomePage>
     );
   }
 
-  Widget searchBar() {
+  Widget searchBar(Color? foreground) {
     const borderRadius = BorderRadius.all(Radius.circular(25));
     return Expanded(
       child: SizedBox(
         height: 44,
         child: Material(
           borderRadius: borderRadius,
-          color: _colorScheme.onSecondaryContainer.withValues(alpha: 0.05),
+          color: foreground == null
+              ? _colorScheme.onSecondaryContainer.withValues(alpha: 0.05)
+              : foreground.computeLuminance() < 0.5
+              ? Colors.white.withValues(alpha: 0.85)
+              : Colors.black.withValues(alpha: 0.28),
           child: InkWell(
             borderRadius: borderRadius,
-            splashColor: _colorScheme.primaryContainer.withValues(
-              alpha: 0.3,
-            ),
+            splashColor: _colorScheme.primaryContainer.withValues(alpha: 0.3),
             onTap: () => Get.toNamed(
               '/search',
               parameters: _homeController.enableSearchWord
@@ -168,7 +192,7 @@ class _HomePageState extends CommonPageState<HomePage>
                 const SizedBox(width: 14),
                 Icon(
                   Icons.search_outlined,
-                  color: _colorScheme.onSecondaryContainer,
+                  color: foreground ?? _colorScheme.onSecondaryContainer,
                   semanticLabel: '搜索',
                 ),
                 const SizedBox(width: 10),
@@ -178,7 +202,11 @@ class _HomePageState extends CommonPageState<HomePage>
                       _homeController.defaultSearch.value,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: _colorScheme.outline),
+                      style: TextStyle(
+                        color:
+                            foreground?.withValues(alpha: 0.85) ??
+                            _colorScheme.outline,
+                      ),
                     ),
                   ),
                 ),

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/bili_theme.dart';
 import 'package:PiliPlus/common/widgets/floating_navigation_bar.dart';
 import 'package:PiliPlus/common/widgets/flutter/pop_scope.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -154,9 +155,50 @@ class _MainAppState extends PopScopeState<MainApp>
   Widget? get _bottomNav {
     Widget? bottomNav;
     if (_mainController.navigationBars.length > 1) {
-      if (_mainController.floatingNavBar) {
-        bottomNav = Obx(
-          () => FloatingNavigationBar(
+      bottomNav = Obx(() {
+        final service = BiliThemeService.instance;
+        final file = service.enabled.value ? service.tailBg : null;
+        final edgeColor = Color(
+          service.tailBackgroundColor.value ??
+              service.activeSeedColor ??
+              _colorScheme.surface.toARGB32(),
+        );
+        final fallbackForeground = edgeColor.computeLuminance() < 0.5
+            ? Colors.white
+            : Colors.black87;
+        final props = service.appliedProperties;
+        final selectedColor = file == null
+            ? null
+            : parseBiliThemeColor(props?.tailColorSelected) ??
+                  fallbackForeground;
+        final unselectedColor = file == null
+            ? null
+            : parseBiliThemeColor(props?.tailColor) ?? fallbackForeground;
+        final labelStyle = file == null
+            ? null
+            : WidgetStateProperty.resolveWith<TextStyle?>(
+                (states) => Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: states.contains(WidgetState.selected)
+                      ? selectedColor
+                      : unselectedColor,
+                ),
+              );
+        final indicatorColor = selectedColor?.withValues(alpha: 0.16);
+        final Widget bar;
+        if (_mainController.floatingNavBar) {
+          return FloatingNavigationBar(
+            backgroundImage: file == null
+                ? null
+                : DecorationImage(
+                    image: FileImage(file),
+                    fit: BoxFit.cover,
+                    onError: (_, _) {},
+                  ),
+            backgroundColor: file == null ? null : edgeColor,
+            elevation: file == null ? null : 0,
+            surfaceTintColor: file == null ? null : Colors.transparent,
+            indicatorColor: indicatorColor,
+            labelTextStyle: labelStyle,
             onDestinationSelected: _mainController.setIndex,
             selectedIndex: _mainController.selectedIndex.value,
             destinations: _mainController.navigationBars
@@ -168,11 +210,14 @@ class _MainAppState extends PopScopeState<MainApp>
                   ),
                 )
                 .toList(),
-          ),
-        );
-      } else if (_mainController.enableMYBar) {
-        bottomNav = Obx(
-          () => NavigationBar(
+          );
+        } else if (_mainController.enableMYBar) {
+          bar = NavigationBar(
+            backgroundColor: file == null ? null : Colors.transparent,
+            elevation: file == null ? null : 0,
+            surfaceTintColor: file == null ? null : Colors.transparent,
+            indicatorColor: indicatorColor,
+            labelTextStyle: labelStyle,
             maintainBottomViewPadding: true,
             onDestinationSelected: _mainController.setIndex,
             selectedIndex: _mainController.selectedIndex.value,
@@ -185,11 +230,13 @@ class _MainAppState extends PopScopeState<MainApp>
                   ),
                 )
                 .toList(),
-          ),
-        );
-      } else {
-        bottomNav = Obx(
-          () => BottomNavigationBar(
+          );
+        } else {
+          bar = BottomNavigationBar(
+            backgroundColor: file == null ? null : Colors.transparent,
+            elevation: file == null ? null : 0,
+            selectedItemColor: selectedColor,
+            unselectedItemColor: unselectedColor,
             currentIndex: _mainController.selectedIndex.value,
             onTap: _mainController.setIndex,
             iconSize: 16,
@@ -205,18 +252,20 @@ class _MainAppState extends PopScopeState<MainApp>
                   ),
                 )
                 .toList(),
-          ),
+          );
+        }
+        return BiliThemeNavigationBackground(
+          file: file,
+          edgeColor: edgeColor,
+          child: bar,
         );
-      }
+      });
 
       if (_mainController.hideBottomBar) {
         if (_mainController.barOffset case final barOffset?) {
           return Obx(
             () => FractionalTranslation(
-              translation: Offset(
-                0.0,
-                barOffset.value / Style.topBarHeight,
-              ),
+              translation: Offset(0.0, barOffset.value / Style.topBarHeight),
               child: bottomNav,
             ),
           );
@@ -347,7 +396,10 @@ class _MainAppState extends PopScopeState<MainApp>
           child: bottomNav,
         );
       }
-      padding = _padding.copyWith(bottom: 0);
+      padding = _padding.copyWith(
+        top: PlatformUtils.isMobile ? 0 : _padding.top,
+        bottom: 0,
+      );
     } else {
       sideBar = DecoratedBox(
         decoration: BoxDecoration(
@@ -359,7 +411,10 @@ class _MainAppState extends PopScopeState<MainApp>
         ),
         child: _sideBar(),
       );
-      padding = .only(top: _padding.top, right: _padding.right);
+      padding = .only(
+        top: PlatformUtils.isMobile ? 0 : _padding.top,
+        right: _padding.right,
+      );
     }
 
     child = Material(
@@ -369,24 +424,43 @@ class _MainAppState extends PopScopeState<MainApp>
           MainLayout(
             sideBar: sideBar,
             bottomNav: bottomNav,
-            body: Padding(padding: padding, child: child),
+            body: PrimaryPageInsets(
+              top: PlatformUtils.isMobile ? _padding.top : 0,
+              child: Padding(padding: padding, child: child),
+            ),
           ),
         ],
       ),
     );
 
     if (PlatformUtils.isMobile) {
-      return AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarBrightness: _colorScheme.brightness,
-          statusBarIconBrightness: _colorScheme.brightness.reverse,
-          systemStatusBarContrastEnforced: false,
-          systemNavigationBarColor: Colors.transparent,
-          systemNavigationBarIconBrightness: _colorScheme.brightness.reverse,
-        ),
-        child: child,
-      );
+      final body = child;
+      return Obx(() {
+        final service = BiliThemeService.instance;
+        final edge =
+            service.enabled.value &&
+                !_mainController.floatingNavBar &&
+                service.tailBg != null
+            ? service.tailBackgroundColor.value
+            : null;
+        final navBrightness = edge == null
+            ? _colorScheme.brightness.reverse
+            : Color(edge).computeLuminance() < 0.5
+            ? Brightness.light
+            : Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarBrightness: _colorScheme.brightness,
+            statusBarIconBrightness: _colorScheme.brightness.reverse,
+            systemStatusBarContrastEnforced: false,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: navBrightness,
+            systemNavigationBarContrastEnforced: edge == null ? null : false,
+          ),
+          child: body,
+        );
+      });
     }
 
     return child;
@@ -428,21 +502,36 @@ class _MainAppState extends PopScopeState<MainApp>
           errorBuilder: (_, _, _) => selected ? type.selectIcon : type.icon,
         );
       }
+      if (service.tailBg != null) {
+        final edge = Color(
+          service.tailBackgroundColor.value ??
+              service.activeSeedColor ??
+              _colorScheme.surface.toARGB32(),
+        );
+        final props = service.appliedProperties;
+        final color =
+            parseBiliThemeColor(
+              selected ? props?.tailColorSelected : props?.tailColor,
+            ) ??
+            (edge.computeLuminance() < 0.5 ? Colors.white : Colors.black87);
+        icon = IconTheme(
+          data: IconThemeData(color: color),
+          child: icon,
+        );
+      }
     }
     return type == .dynamics
-        ? Obx(
-            () {
-              final dynCount = _mainController.dynCount.value;
-              return Badge(
-                isLabelVisible: dynCount > 0,
-                label: _mainController.dynamicBadgeMode == .number
-                    ? Text(dynCount.toString())
-                    : null,
-                padding: const .symmetric(horizontal: 6),
-                child: icon,
-              );
-            },
-          )
+        ? Obx(() {
+            final dynCount = _mainController.dynCount.value;
+            return Badge(
+              isLabelVisible: dynCount > 0,
+              label: _mainController.dynamicBadgeMode == .number
+                  ? Text(dynCount.toString())
+                  : null,
+              padding: const .symmetric(horizontal: 6),
+              child: icon,
+            );
+          })
         : icon;
   }
 

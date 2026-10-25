@@ -1,3 +1,4 @@
+import 'package:PiliPlus/common/widgets/bili_theme.dart';
 import 'package:PiliPlus/common/widgets/scroll_physics.dart' show tabBarView;
 import 'package:PiliPlus/http/loading_state.dart';
 import 'package:PiliPlus/models/common/dynamic/dynamics_type.dart';
@@ -9,6 +10,7 @@ import 'package:PiliPlus/pages/dynamics/widgets/up_panel.dart';
 import 'package:PiliPlus/pages/dynamics_create/view.dart';
 import 'package:PiliPlus/pages/dynamics_tab/view.dart';
 import 'package:PiliPlus/pages/main/controller.dart';
+import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
 import 'package:get/get.dart';
 import 'package:material_ui/material_ui.dart' hide DraggableScrollableSheet;
@@ -29,27 +31,23 @@ class _DynamicsPageState extends CommonPageState<DynamicsPage>
   @override
   bool get wantKeepAlive => true;
 
-  Widget _createDynamicBtn(ColorScheme colorScheme, {bool isRight = true}) =>
-      Container(
-        width: 34,
-        height: 34,
-        margin: isRight ? const .only(right: 16) : const .only(left: 16),
-        child: IconButton(
-          tooltip: '发布动态',
-          style: ButtonStyle(
-            padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-            backgroundColor: WidgetStatePropertyAll(
-              colorScheme.secondaryContainer,
-            ),
-          ),
-          onPressed: () => CreateDynPanel.onCreateDyn(context),
-          icon: Icon(
-            Icons.add,
-            size: 18,
-            color: colorScheme.onSecondaryContainer,
-          ),
-        ),
-      );
+  Widget _createDynamicBtn(
+    ColorScheme colorScheme, {
+    bool isRight = true,
+  }) => Container(
+    width: 34,
+    height: 34,
+    margin: isRight ? const .only(right: 16) : const .only(left: 16),
+    child: IconButton(
+      tooltip: '发布动态',
+      style: ButtonStyle(
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        backgroundColor: WidgetStatePropertyAll(colorScheme.secondaryContainer),
+      ),
+      onPressed: () => CreateDynPanel.onCreateDyn(context),
+      icon: Icon(Icons.add, size: 18, color: colorScheme.onSecondaryContainer),
+    ),
+  );
 
   Widget upPanelPart(ColorScheme colorScheme) {
     final isTop = upPanelPosition == .top;
@@ -170,37 +168,56 @@ class _DynamicsPageState extends CommonPageState<DynamicsPage>
       resizeToAvoidBottomInset: false,
       backgroundColor: Colors.transparent,
       appBar: PreferredSize(
-        preferredSize: const .fromHeight(50),
-        child: Row(
-          children: [
-            ?leading,
-            Expanded(
-              child: TabBar(
-                dividerHeight: 0,
-                isScrollable: true,
-                tabAlignment: .start,
-                dividerColor: Colors.transparent,
-                labelColor: colorScheme.primary,
-                indicatorColor: colorScheme.primary,
-                controller: _dynamicsController.tabController,
-                unselectedLabelColor: colorScheme.onSurface,
-                labelStyle:
-                    TabBarTheme.of(context).labelStyle
-                        ?.copyWith(fontSize: 13) ??
-                    const TextStyle(fontSize: 13),
-                tabs: DynamicsTabType.values
-                    .map((e) => Tab(text: e.label))
-                    .toList(),
-                onTap: (index) {
-                  if (!_dynamicsController.tabController.indexIsChanging) {
-                    _dynamicsController.animateToTop();
-                  }
-                },
+        preferredSize: Size.fromHeight(50 + PrimaryPageInsets.topOf(context)),
+        child: Obx(() {
+          final service = BiliThemeService.instance;
+          final file = service.enabled.value ? service.homeHeaderBg : null;
+          final foreground = file == null
+              ? null
+              : parseBiliThemeColor(service.appliedProperties?.color) ??
+                    Colors.white;
+          return BiliThemePrimaryHeader(
+            file: file,
+            foreground: foreground,
+            child: SizedBox(
+              height: 50,
+              child: Row(
+                children: [
+                  ?leading,
+                  Expanded(
+                    child: TabBar(
+                      dividerHeight: 0,
+                      isScrollable: true,
+                      tabAlignment: .start,
+                      dividerColor: Colors.transparent,
+                      labelColor: foreground ?? colorScheme.primary,
+                      indicatorColor: foreground ?? colorScheme.primary,
+                      controller: _dynamicsController.tabController,
+                      unselectedLabelColor:
+                          foreground?.withValues(alpha: 0.75) ??
+                          colorScheme.onSurface,
+                      labelStyle:
+                          TabBarTheme.of(context).labelStyle
+                              ?.copyWith(fontSize: 13) ??
+                          const TextStyle(fontSize: 13),
+                      tabs: DynamicsTabType.values
+                          .map((e) => Tab(text: e.label))
+                          .toList(),
+                      onTap: (index) {
+                        if (!_dynamicsController
+                            .tabController
+                            .indexIsChanging) {
+                          _dynamicsController.animateToTop();
+                        }
+                      },
+                    ),
+                  ),
+                  actions,
+                ],
               ),
             ),
-            actions,
-          ],
-        ),
+          );
+        }),
       ),
       drawer: drawer,
       endDrawer: endDrawer,

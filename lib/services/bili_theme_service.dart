@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:PiliPlus/http/bili_theme.dart';
@@ -30,6 +31,8 @@ class BiliThemeService extends GetxService {
   final isApplying = false.obs;
   final lastError = Rxn<String>();
   final resourceRevision = 0.obs;
+  final tailBackgroundColor = Rxn<int>();
+  int _edgeColorRequest = 0;
 
   bool get hasAppliedTheme =>
       appliedId.value?.isNotEmpty == true &&
@@ -43,6 +46,14 @@ class BiliThemeService extends GetxService {
     if (id == null) return null;
     for (final asset in assets) {
       if (asset.item?.itemId == id) return asset.item?.name;
+    }
+    return null;
+  }
+
+  BiliThemeProperties? get appliedProperties {
+    final id = appliedId.value;
+    for (final asset in assets) {
+      if (asset.item?.itemId == id) return asset.item?.properties;
     }
     return null;
   }
@@ -61,12 +72,14 @@ class BiliThemeService extends GetxService {
 
   File? get homeBg =>
       _assetFile('head_bg.png') ?? _assetFile('head_myself_squared_bg.png');
+  File? get homeHeaderBg => _assetFile('head_bg.png');
+  File? get homeTabBg => _assetFile('head_tab_bg.png');
+  File? get tailBg => _assetFile('tail_bg.png');
   File? get mineBg => _assetFile('head_myself_squared_bg.png');
   File? get mineVideoFile => _assetFile('head_myself_mp4_bg.mp4');
 
-  File? tailIcon(String name, bool selected) => _assetFile(
-    'tail_icon_${selected ? 'selected_' : ''}$name.png',
-  );
+  File? tailIcon(String name, bool selected) =>
+      _assetFile('tail_icon_${selected ? 'selected_' : ''}$name.png');
 
   @override
   void onInit() {
@@ -87,6 +100,7 @@ class BiliThemeService extends GetxService {
     appliedVer.value = GStorage.setting.get(SettingBoxKey.biliThemeAppliedVer);
     seedColor.value = GStorage.setting.get(SettingBoxKey.biliThemeSeed);
     _restoreAssets();
+    unawaited(_refreshTailBackgroundColor());
   }
 
   Future<void> setEnabled(bool value) async {
@@ -268,6 +282,7 @@ class BiliThemeService extends GetxService {
       seedColor.value = extractedSeed;
       enabled.value = true;
       resourceRevision.value++;
+      unawaited(_refreshTailBackgroundColor());
       await _persistAssets();
       await GStorage.setting.putAll({
         SettingBoxKey.biliThemeAppliedId: id,
@@ -323,6 +338,19 @@ class BiliThemeService extends GetxService {
       }
     }
     assets.assignAll(restored.where((asset) => asset.item != null));
+  }
+
+  Future<void> _refreshTailBackgroundColor() async {
+    final request = ++_edgeColorRequest;
+    tailBackgroundColor.value = null;
+    final file = tailBg;
+    if (file == null) return;
+    try {
+      final color = await extractBottomEdgeColorFromImage(file);
+      if (request == _edgeColorRequest) tailBackgroundColor.value = color;
+    } catch (_) {
+      // Missing/corrupt optional art must not prevent applying a theme.
+    }
   }
 
   Future<void> _persistAssets() => GStorage.setting.put(

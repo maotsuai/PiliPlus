@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
+import 'package:PiliPlus/common/widgets/bili_theme.dart';
 import 'package:PiliPlus/common/widgets/flutter/list_tile.dart';
 import 'package:PiliPlus/common/widgets/flutter/refresh_indicator.dart';
 import 'package:PiliPlus/common/widgets/image/network_img_layer.dart';
@@ -27,6 +28,7 @@ import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
@@ -48,6 +50,11 @@ class _MediaPageState extends CommonPageState<MinePage>
   final MineController controller = Get.putOrFind(MineController.new);
   late final MainController _mainController = Get.find<MainController>();
   final _routeVisible = true.obs;
+  final _headerUnderStatusBar = true.obs;
+  final _headerKey = GlobalKey();
+  double? _headerHeight;
+  double _scrollOffset = 0;
+  bool _headerMeasurementScheduled = false;
   late ThemeData theme;
 
   @override
@@ -66,6 +73,7 @@ class _MediaPageState extends CommonPageState<MinePage>
   @override
   void dispose() {
     _routeVisible.close();
+    _headerUnderStatusBar.close();
     super.dispose();
   }
 
@@ -95,6 +103,22 @@ class _MediaPageState extends CommonPageState<MinePage>
     theme = Theme.of(context);
   }
 
+  void _updateHeaderStatus(double topInset) {
+    final height = _headerKey.currentContext?.size?.height ?? _headerHeight;
+    if (height == null) return;
+    _headerHeight = height;
+    _headerUnderStatusBar.value = _scrollOffset < height - topInset;
+  }
+
+  void _measureHeaderAfterLayout(double topInset) {
+    if (_headerMeasurementScheduled) return;
+    _headerMeasurementScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _headerMeasurementScheduled = false;
+      if (mounted) _updateHeaderStatus(topInset);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -107,47 +131,97 @@ class _MediaPageState extends CommonPageState<MinePage>
           ? service.mineVideoFile
           : null;
       final hasThemeBackground = staticBg != null || videoBg != null;
+      final topInset = PrimaryPageInsets.topOf(context);
+      if (hasThemeBackground) _measureHeaderAfterLayout(topInset);
       final headerActions = Padding(
         padding: const .symmetric(vertical: 10),
         child: _buildHeaderActions,
       );
-      return Column(
+      final content = Column(
         children: [
-          if (!hasThemeBackground) headerActions,
+          if (!hasThemeBackground)
+            Padding(
+              padding: EdgeInsets.only(top: topInset),
+              child: headerActions,
+            ),
           Expanded(
             child: Material(
               type: .transparency,
               child: refreshIndicator(
                 onRefresh: controller.onRefresh,
-                child: onBuild(
-                  ListView(
-                    padding: const .only(bottom: 150),
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      if (hasThemeBackground)
-                        _buildThemedHeader(
-                          service: service,
-                          actions: headerActions,
-                          staticBg: staticBg,
-                          videoBg: videoBg,
-                        )
-                      else
-                        _buildUserInfo(theme, secondary),
-                      _buildActions(secondary),
-                      for (final tab in controller.mineTabs)
-                        switch (tab) {
-                          .favorite => Obx(_buildFav),
-                          .history => Obx(_buildHistory),
-                          .later => Obx(_buildLater),
-                          .sub => Obx(_buildSub),
-                        },
-                    ],
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (notification) {
+                    if (notification.depth == 0 &&
+                        notification.metrics.axis == Axis.vertical) {
+                      _scrollOffset = notification.metrics.pixels;
+                      _updateHeaderStatus(topInset);
+                    }
+                    return false;
+                  },
+                  child: onBuild(
+                    ListView(
+                      padding: const .only(bottom: 150),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        if (hasThemeBackground)
+                          _buildThemedHeader(
+                            service: service,
+                            actions: headerActions,
+                            staticBg: staticBg,
+                            videoBg: videoBg,
+                          )
+                        else
+                          _buildUserInfo(theme, secondary),
+                        _buildActions(secondary),
+                        for (final tab in controller.mineTabs)
+                          switch (tab) {
+                            .favorite => Obx(_buildFav),
+                            .history => Obx(_buildHistory),
+                            .later => Obx(_buildLater),
+                            .sub => Obx(_buildSub),
+                          },
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ],
+      );
+      // Only the first-level page owns the physical status-bar area. Secondary
+      // MinePage routes still use the route's existing SafeArea.
+      if (topInset == 0) return content;
+      final headerVisible = hasThemeBackground && _headerUnderStatusBar.value;
+      final seed = service.activeSeedColor;
+      final bodyColor = seed == null
+          ? theme.colorScheme.surface
+          : Color.alphaBlend(
+              theme.colorScheme.surface.withValues(
+                alpha: service.bgOpacity.value,
+              ),
+              Color(seed),
+            );
+      return AnnotatedRegion<SystemUiOverlayStyle>(
+        value: biliThemeOverlayStyle(
+          headerVisible ? Colors.white : theme.colorScheme.onSurface,
+        ),
+        child: Stack(
+          children: [
+            content,
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: topInset,
+              child: IgnorePointer(
+                child: ColoredBox(
+                  color: headerVisible ? Colors.transparent : bodyColor,
+                ),
+              ),
+            ),
+          ],
+        ),
       );
     });
   }
@@ -278,24 +352,23 @@ class _MediaPageState extends CommonPageState<MinePage>
     final isMine =
         selectedIndex < _mainController.navigationBars.length &&
         _mainController.navigationBars[selectedIndex] == NavigationBarType.mine;
-    final isCurrentTab = isMine && _routeVisible.value;
-    final height = (MediaQuery.sizeOf(context).height / 3)
-        .clamp(220.0, 380.0)
-        .toDouble();
-    return SizedBox(
-      height: height,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (staticBg != null)
-            Image.file(
+    final isCurrentTab =
+        isMine && _routeVisible.value && _headerUnderStatusBar.value;
+    return Stack(
+      key: _headerKey,
+      children: [
+        if (staticBg != null)
+          Positioned.fill(
+            child: Image.file(
               staticBg,
               fit: BoxFit.cover,
               gaplessPlayback: true,
               errorBuilder: (_, _, _) => const SizedBox.shrink(),
             ),
-          if (videoBg != null)
-            _LoopVideoBg(
+          ),
+        if (videoBg != null)
+          Positioned.fill(
+            child: _LoopVideoBg(
               key: ValueKey(
                 '${videoBg.path}:${service.resourceRevision.value}',
               ),
@@ -303,47 +376,43 @@ class _MediaPageState extends CommonPageState<MinePage>
               playing: isCurrentTab,
               loop: service.loopMineVideo,
             ),
-          const DecoratedBox(
+          ),
+        const Positioned.fill(
+          child: DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0x19000000), Color(0xA6000000)],
+                colors: [
+                  Color(0x66000000),
+                  Color(0x33000000),
+                  Color(0xA6000000),
+                ],
+                stops: [0, 0.45, 1],
               ),
             ),
           ),
-          Column(
-            children: [
-              Theme(
-                data: theme.copyWith(
-                  iconTheme: theme.iconTheme.copyWith(color: Colors.white),
-                  iconButtonTheme: IconButtonThemeData(
-                    style: (theme.iconButtonTheme.style ?? const ButtonStyle())
-                        .copyWith(
-                          foregroundColor: const WidgetStatePropertyAll(
-                            Colors.white,
-                          ),
-                        ),
-                  ),
-                ),
-                child: actions,
-              ),
-              Expanded(
-                child: Center(
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: _buildUserInfo(
-                      theme,
-                      Colors.white,
-                      onThemeBackground: true,
+        ),
+        BiliThemeHeaderLayout(
+          preferredHeight: MediaQuery.sizeOf(context).height / 3,
+          topInset: PrimaryPageInsets.topOf(context),
+          actions: Theme(
+            data: theme.copyWith(
+              iconTheme: theme.iconTheme.copyWith(color: Colors.white),
+              iconButtonTheme: IconButtonThemeData(
+                style: (theme.iconButtonTheme.style ?? const ButtonStyle())
+                    .copyWith(
+                      foregroundColor: const WidgetStatePropertyAll(
+                        Colors.white,
+                      ),
                     ),
-                  ),
-                ),
               ),
-            ],
+            ),
+            child: actions,
           ),
-        ],
-      ),
+          info: _buildUserInfo(theme, Colors.white, onThemeBackground: true),
+        ),
+      ],
     );
   }
 
