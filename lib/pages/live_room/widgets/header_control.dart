@@ -16,7 +16,7 @@ import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/extension/context_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/extension/string_ext.dart';
-import 'package:PiliPlus/utils/ios/pip_helper.dart';
+import 'package:PiliPlus/utils/system_pip.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
@@ -164,7 +164,7 @@ class _LiveHeaderControlState extends State<LiveHeaderControl>
               onTap: widget.onSendDanmaku,
             ),
           if ((Platform.isAndroid && PiliAndroidHelper.isPipAvailable) ||
-              (Platform.isIOS && IOSPipHelper.isAvailable) ||
+              (Platform.isIOS && SystemPipHelper.isAvailable) ||
               (PlatformUtils.isDesktop && !isFullScreen))
             ComBtn(
               height: btnHeight,

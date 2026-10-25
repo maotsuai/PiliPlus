@@ -62,9 +62,11 @@ class LiveRoomController extends GetxController {
   DanmakuController<DanmakuExtra>? danmakuController;
   final plPlayerController = PlPlayerController.getInstance(
     isLive: true,
+    playbackKey: 'live/${Get.arguments}',
   );
 
   final isLoaded = false.obs;
+  bool _resumeFromPip = false;
   final roomInfoH5 = Rxn<RoomInfoH5Data>();
 
   final liveTime = Rxn<int>();
@@ -204,6 +206,7 @@ class LiveRoomController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    _resumeFromPip = plPlayerController.takePipRestore();
     scrollController = ScrollController()..addListener(listener);
     final account = Accounts.main;
     isLogin = account.isLogin;
@@ -224,6 +227,11 @@ class LiveRoomController extends GetxController {
   }) {
     if (videoUrl == null) {
       return null;
+    }
+    if (_resumeFromPip) {
+      _resumeFromPip = false;
+      if (plPlayerController.playerStatus.isPlaying) startLiveMsg();
+      return Future<void>.value();
     }
     return plPlayerController.setDataSource(
       NetworkSource(videoSource: videoUrl!, audioSource: null),

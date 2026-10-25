@@ -58,12 +58,28 @@ final class PipPlugin: NSObject, FlutterPlugin {
         return
       }
       let session: PipSession
-      if let current = self.session, current.textureId == textureId {
+      let sessionId = (args["sessionId"] as? NSNumber)?.int64Value ?? 0
+      if let current = self.session, current.textureId == textureId,
+        current.sessionId == sessionId
+      {
         session = current
       } else {
         tearDown()
-        session = PipSession(textureId: textureId) { [weak self] method, arguments in
-          self?.channel.invokeMethod(method, arguments: arguments)
+        session = PipSession(textureId: textureId, sessionId: sessionId) {
+          [weak self] method, arguments in
+          self?.channel.invokeMethod(method, arguments: [
+            "sessionId": sessionId,
+            "value": arguments as Any,
+          ])
+        }
+        session.onRestore = { [weak self] completion in
+          guard let self else {
+            completion(false)
+            return
+          }
+          self.channel.invokeMethod("restore", arguments: ["sessionId": sessionId]) {
+            result in completion(result as? Bool ?? false)
+          }
         }
         session.onStop = { [weak self, weak session] in
           // Keep the session alive while armed for auto-enter.
@@ -121,7 +137,9 @@ private final class PipSession: NSObject {
   private static let idleFrameInterval = 0.25
 
   let textureId: Int64
+  let sessionId: Int64
   var onStop: (() -> Void)?
+  var onRestore: ((@escaping (Bool) -> Void) -> Void)?
   private(set) var isActive = false
 
   var autoEnter = false {
@@ -134,8 +152,6 @@ private final class PipSession: NSObject {
   private let timebase: CMTimebase
   private var controller: AVPictureInPictureController!
   private var possibleObservation: NSKeyValueObservation?
-  private var observers: [NSObjectProtocol] = []
-  private var enteredBackground = false
 
   private var isPlaying = false
   private var isLive = false
@@ -144,8 +160,6 @@ private final class PipSession: NSObject {
   private var pendingStart = false
   private var stopRequested = false
   private var restoring = false
-  /// Whether to leave the app once PiP has started, see `start()`.
-  private var backgroundOnStart = false
   private var frameInFlight = false
   private var lastFrameTime: CFTimeInterval = 0
   /// Whether a frame has been enqueued, PiP shows a black window otherwise.
@@ -164,7 +178,7 @@ private final class PipSession: NSObject {
   /// Size of the PiP window in pixels, zero until known.
   private var renderSize = CGSize.zero
 
-  init(textureId: Int64, sendEvent: @escaping (String, Any?) -> Void) {
+  init(textureId: Int64, sessionId: Int64, sendEvent: @escaping (String, Any?) -> Void) {
     let sourceView = SampleBufferView()
     let displayLayer = sourceView.layer as! AVSampleBufferDisplayLayer
     displayLayer.videoGravity = .resizeAspect
@@ -178,6 +192,7 @@ private final class PipSession: NSObject {
     displayLayer.controlTimebase = timebase
 
     self.textureId = textureId
+    self.sessionId = sessionId
     self.sendEvent = sendEvent
     self.sourceView = sourceView
     self.displayLayer = displayLayer
@@ -193,33 +208,6 @@ private final class PipSession: NSObject {
       [weak self] _, _ in
       DispatchQueue.main.async { self?.startIfPending() }
     }
-    // The video is shown inline again once the app is back in the foreground.
-    // Starting PiP also posts foreground notifications, and stopping it is
-    // ignored until the scene is active, hence `didActivate` after background.
-    observers = [
-      NotificationCenter.default.addObserver(
-        forName: UIScene.didEnterBackgroundNotification,
-        object: nil,
-        queue: .main
-      ) { [weak self] _ in
-        // Also posted while active when PiP stops.
-        if UIApplication.shared.applicationState == .background {
-          self?.enteredBackground = true
-        }
-      },
-      NotificationCenter.default.addObserver(
-        forName: UIScene.didActivateNotification,
-        object: nil,
-        queue: .main
-      ) { [weak self] _ in
-        guard let self, self.enteredBackground else { return }
-        self.enteredBackground = false
-        if self.controller.isPictureInPictureActive {
-          self.stopRequested = true
-          self.controller.stopPictureInPicture()
-        }
-      },
-    ]
   }
 
   /// Places the (hidden) source layer where the player usually is, so the
@@ -267,19 +255,16 @@ private final class PipSession: NSObject {
     controller.invalidatePlaybackState()
   }
 
-  /// Enters PiP and then leaves the app, so that the video only plays in the
-  /// PiP window, as on Android where the whole activity becomes the window.
+  /// The system owns the window; Flutter can keep browsing in the foreground.
   func start() {
     guard !controller.isPictureInPictureActive else { return }
     pendingStart = true
-    backgroundOnStart = true
     startIfPending()
     // Give up if PiP doesn't become possible shortly, so a stale request
     // doesn't start PiP unexpectedly later.
     DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
       guard let self, self.pendingStart else { return }
       self.pendingStart = false
-      self.backgroundOnStart = false
       self.sendEvent("onStateChanged", ["active": false, "error": "PiP is not possible"])
       self.onStop?()
     }
@@ -299,7 +284,6 @@ private final class PipSession: NSObject {
   func invalidate() {
     pendingStart = false
     possibleObservation?.invalidate()
-    observers.forEach(NotificationCenter.default.removeObserver)
     controller.delegate = nil
     if controller.isPictureInPictureActive {
       controller.stopPictureInPicture()
@@ -459,12 +443,6 @@ private final class PipSession: NSObject {
     }
   }
 
-  /// Same as the home gesture. There is no public API for this, `suspend` is
-  /// a private method of `UIApplication`.
-  private static func moveToBackground() {
-    UIControl().sendAction(#selector(URLSessionTask.suspend), to: UIApplication.shared, for: nil)
-  }
-
   private static func hostWindow() -> UIWindow? {
     let windows = UIApplication.shared.connectedScenes
       .compactMap { $0 as? UIWindowScene }
@@ -489,10 +467,7 @@ extension PipSession: AVPictureInPictureControllerDelegate {
   func pictureInPictureControllerDidStartPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {
-    if backgroundOnStart {
-      backgroundOnStart = false
-      Self.moveToBackground()
-    }
+    sendEvent("onStateChanged", ["active": true, "started": true])
   }
 
   func pictureInPictureController(
@@ -500,7 +475,6 @@ extension PipSession: AVPictureInPictureControllerDelegate {
     failedToStartPictureInPictureWithError error: Error
   ) {
     isActive = false
-    backgroundOnStart = false
     sendEvent("onStateChanged", ["active": false, "error": error.localizedDescription])
     DispatchQueue.main.async { [weak self] in self?.onStop?() }
   }
@@ -511,7 +485,11 @@ extension PipSession: AVPictureInPictureControllerDelegate {
       @escaping (Bool) -> Void
   ) {
     restoring = true
-    completionHandler(true)
+    if let onRestore {
+      onRestore(completionHandler)
+    } else {
+      completionHandler(false)
+    }
   }
 
   func pictureInPictureControllerDidStopPictureInPicture(

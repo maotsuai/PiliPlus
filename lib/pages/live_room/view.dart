@@ -34,7 +34,6 @@ import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/plugin/pl_player/view/view.dart';
 import 'package:PiliPlus/services/service_locator.dart';
-import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/extension/theme_ext.dart';
@@ -47,6 +46,7 @@ import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:PiliPlus/utils/system_pip.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
 import 'package:PiliPlus/utils/utils.dart';
 import 'package:cached_network_image_ce/cached_network_image.dart';
@@ -73,6 +73,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   final String heroTag = Utils.generateRandomString(6);
   late final LiveRoomController _liveRoomController;
   late final PlPlayerController plPlayerController;
+  bool _minimizedToPip = false;
   bool get isFullScreen => plPlayerController.isFullScreen.value;
 
   late final GlobalKey pageKey = GlobalKey();
@@ -101,6 +102,37 @@ class _LiveRoomPageState extends State<LiveRoomPage>
       plPlayerController.play,
       playOwner: _playOwner,
     );
+    final player = plPlayerController;
+    int? restoreRoomId;
+    player.bindPipPlayback(
+      playbackKey: () => 'live/${_liveRoomController.roomId}',
+      onMinimize: () {
+        restoreRoomId = _liveRoomController.roomId;
+        _leaveForPip();
+      },
+      onRestore: () => PageUtils.toLiveRoom(restoreRoomId),
+    );
+  }
+
+  Future<void> _leaveForPip() async {
+    if (!mounted) return;
+    _minimizedToPip = true;
+    final player = plPlayerController;
+    final route = ModalRoute.of(context)!;
+    final navigator = Navigator.of(context);
+    await player.triggerFullScreen(status: false);
+    if (!mounted) return;
+    player.danmakuController = null;
+    PlPlayerController.setPlayCallBack(player.play);
+    if (route.isCurrent) {
+      if (route.isFirst) {
+        Get.offNamed('/');
+      } else {
+        Get.back();
+      }
+    } else if (route.isActive) {
+      navigator.removeRoute(route);
+    }
   }
 
   @override
@@ -135,6 +167,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   @override
   void didPopNext() {
+    if (SystemPipHelper.isDetached) return;
     addObserverMobile(this);
     _onPopNext();
     super.didPopNext();
@@ -169,6 +202,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   @override
   void didPushNext() {
+    if (SystemPipHelper.isDetached) return;
     removeObserverMobile(this);
     plPlayerController.removeStatusLister(playerListener);
     _liveRoomController
@@ -196,11 +230,13 @@ class _LiveRoomPageState extends State<LiveRoomPage>
   @override
   void dispose() {
     removeObserverMobile(this);
-    videoPlayerServiceHandler?.onVideoDetailDispose(heroTag);
+    if (!_minimizedToPip) {
+      videoPlayerServiceHandler?.onVideoDetailDispose(heroTag);
+    }
     if (Platform.isAndroid && !plPlayerController.setSystemBrightness) {
       ScreenBrightnessPlatform.instance.resetApplicationScreenBrightness();
     }
-    PlPlayerController.setPlayCallBack(null);
+    if (!_minimizedToPip) PlPlayerController.setPlayCallBack(null);
     plPlayerController
       ..removeStatusLister(playerListener)
       ..dispose();
@@ -237,18 +273,7 @@ class _LiveRoomPageState extends State<LiveRoomPage>
 
   @override
   Widget build(BuildContext context) {
-    Widget child;
-    if (Platform.isAndroid && AndroidHelper.isPipMode) {
-      child = videoPlayerPanel(
-        isFullScreen,
-        width: maxWidth,
-        height: maxHeight,
-        isPipMode: true,
-        needDm: !plPlayerController.pipNoDanmaku,
-      );
-    } else {
-      child = childWhenDisabled;
-    }
+    Widget child = childWhenDisabled;
     if (plPlayerController.keyboardControl) {
       child = PlayerFocus(
         plPlayerController: plPlayerController,

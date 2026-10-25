@@ -121,12 +121,14 @@ class VideoDetailController extends GetxController
 
   // 是否开始自动播放 存在多p的情况下，第二p需要为true
   final RxBool _autoPlay = Pref.autoPlayEnable.obs;
+  bool _resumeFromPip = false;
 
   final videoPlayerKey = GlobalKey();
   final childKey = GlobalKey<MiniScaffoldState>();
 
-  final plPlayerController = PlPlayerController.getInstance()
-    ..brightness.value = -1;
+  final plPlayerController = PlPlayerController.getInstance(
+    playbackKey: 'video/${Get.arguments['cid']}',
+  )..brightness.value = -1;
   bool get setSystemBrightness => plPlayerController.setSystemBrightness;
   bool get removeSafeArea => plPlayerController.removeSafeArea;
   double get uiScale => plPlayerController.uiScale;
@@ -367,6 +369,10 @@ class VideoDetailController extends GetxController
   void onInit() {
     super.onInit();
     args = Get.arguments;
+    _resumeFromPip = plPlayerController.takePipRestore();
+    if (_resumeFromPip) {
+      _autoPlay.value = true;
+    }
     videoType = args['videoType'];
     if (videoType == VideoType.pgc) {
       if (!isLoginVideo) {
@@ -732,40 +738,46 @@ class VideoDetailController extends GetxController
     Duration? seek = defaultST ?? playedTime;
     if (seek == .zero) seek = null;
     seek ??= getFirstSegment();
-    await plPlayerController.setDataSource(
-      isFileSource
-          ? FileSource(
-              dir: args['dirPath'],
-              typeTag: entry.typeTag!,
-              isMp4: entry.mediaType == 1,
-              hasDashAudio: entry.hasDashAudio,
-            )
-          : NetworkSource(
-              videoSource: videoUrl!,
-              audioSource: audioUrl,
-            ),
-      seekTo: seek,
-      duration: data.timeLength == null
-          ? null
-          : Duration(milliseconds: data.timeLength!),
-      isVertical: isVertical.value,
-      aid: aid,
-      bvid: bvid,
-      cid: cid.value,
-      autoplay: autoplay ?? _autoPlay.value,
-      epid: isUgc ? null : epId,
-      seasonId: isUgc ? null : seasonId,
-      pgcType: isUgc ? null : pgcType,
-      videoType: videoType,
-      onInit: () {
-        videoState.value = true;
-        setSubtitle(vttSubtitlesIndex.value);
-      },
-      width: firstVideo.width,
-      height: firstVideo.height,
-      volume: volume,
-      autoFullScreenFlag: autoFullScreenFlag,
-    );
+    final resumeFromPip = _resumeFromPip && plPlayerController.cid == cid.value;
+    _resumeFromPip = false;
+    if (!resumeFromPip) {
+      await plPlayerController.setDataSource(
+        isFileSource
+            ? FileSource(
+                dir: args['dirPath'],
+                typeTag: entry.typeTag!,
+                isMp4: entry.mediaType == 1,
+                hasDashAudio: entry.hasDashAudio,
+              )
+            : NetworkSource(
+                videoSource: videoUrl!,
+                audioSource: audioUrl,
+              ),
+        seekTo: seek,
+        duration: data.timeLength == null
+            ? null
+            : Duration(milliseconds: data.timeLength!),
+        isVertical: isVertical.value,
+        aid: aid,
+        bvid: bvid,
+        cid: cid.value,
+        autoplay: autoplay ?? _autoPlay.value,
+        epid: isUgc ? null : epId,
+        seasonId: isUgc ? null : seasonId,
+        pgcType: isUgc ? null : pgcType,
+        videoType: videoType,
+        onInit: () {
+          videoState.value = true;
+          setSubtitle(vttSubtitlesIndex.value);
+        },
+        width: firstVideo.width,
+        height: firstVideo.height,
+        volume: volume,
+        autoFullScreenFlag: autoFullScreenFlag,
+      );
+    } else {
+      videoState.value = true;
+    }
 
     if (isClosed) return;
 

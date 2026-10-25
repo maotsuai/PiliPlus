@@ -17,7 +17,7 @@ import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/android/android_helper.dart';
 import 'package:PiliPlus/utils/desktop/window_controller.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
-import 'package:PiliPlus/utils/ios/pip_helper.dart';
+import 'package:PiliPlus/utils/system_pip.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
@@ -328,7 +328,7 @@ List<SettingsModel> get playSettings => [
       defaultVal: false,
     ),
   if ((Platform.isAndroid && PiliAndroidHelper.isPipAvailable) ||
-      (Platform.isIOS && IOSPipHelper.isAvailable))
+      (Platform.isIOS && SystemPipHelper.isAvailable))
     SwitchModel(
       title: '后台画中画',
       subtitle: '进入后台时以小窗形式（PiP）播放',

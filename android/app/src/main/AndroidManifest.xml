@@ -53,7 +53,6 @@
             android:hardwareAccelerated="true"
             android:launchMode="singleTask"
             android:resizeableActivity="true"
-            android:supportsPictureInPicture="true"
             android:theme="@style/LaunchTheme"
             android:windowSoftInputMode="adjustResize">
 
@@ -228,6 +227,16 @@
             </intent-filter>
         </service>
 
+        <activity
+            android:name=".PipActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="${applicationId}.pip"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
+            android:theme="@android:style/Theme.Material.NoActionBar" />
         <activity
             android:name="com.yalantis.ucrop.UCropActivity"
             android:theme="@style/Ucrop.CropTheme" />
