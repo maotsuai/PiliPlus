@@ -5,6 +5,11 @@ final class PipRestoreState {
     private boolean started;
     private boolean restoring;
     private boolean closed;
+    private boolean foregroundReady;
+    private boolean hostLaunchRequested;
+    private boolean hostLaunched;
+    private boolean hostFocused;
+    private boolean pageRestored;
 
     void started() { started = true; }
 
@@ -23,6 +28,29 @@ final class PipRestoreState {
     }
 
     boolean isRestoring() { return restoring && !closed; }
+
+    void foregroundReady(boolean ready) { foregroundReady = ready; }
+
+    void requestHostLaunch() {
+        if (isRestoring()) hostLaunchRequested = true;
+    }
+
+    boolean takeHostLaunch(boolean inPip) {
+        if (!isRestoring() || !foregroundReady || inPip ||
+                !hostLaunchRequested || hostLaunched) return false;
+        hostLaunched = true;
+        return true;
+    }
+
+    void pageRestored() { pageRestored = true; }
+
+    void hostFocused() {
+        if (isRestoring() && hostLaunched) hostFocused = true;
+    }
+
+    boolean readyToFinish() {
+        return isRestoring() && hostLaunched && pageRestored && hostFocused;
+    }
 
     boolean shouldDismiss(boolean finishing) {
         return finishing && started && !restoring && !closed;

@@ -170,7 +170,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
         AndroidHelper.isPipMode = true;
         emit("onStateChanged", map("active", true, "started", true));
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU &&
-                !activity.getIntent().getBooleanExtra("leavingApp", false)) bringHostToFront();
+                !activity.getIntent().getBooleanExtra("leavingApp", false)) bringHostToFront(host);
     }
 
     PictureInPictureParams buildParams(Rect source) {
@@ -200,8 +200,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
             @Override public void success(Object value) {
                 if (activity != playbackActivity) return;
                 if (Boolean.TRUE.equals(value)) {
-                    close();
-                    emitStopped(activity.sessionId, false);
+                    activity.pageRestored();
                 }
             }
             @Override public void error(String code, String message, Object details) {
@@ -211,7 +210,19 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                 if (activity == playbackActivity) fail("Restore unavailable");
             }
         });
-        bringHostToFront();
+        activity.requestHostForeground();
+    }
+
+    public void onHostFocused(Activity activity) {
+        if (activity == host && playbackActivity != null) playbackActivity.hostFocused();
+    }
+
+    void finishRestoreIfReady(PipActivity activity) {
+        if (activity != playbackActivity ||
+                !activity.readyToFinishRestore(host != null && host.hasWindowFocus())) return;
+        long id = activity.sessionId;
+        close();
+        emitStopped(id, false);
     }
 
     void dismissed(PipActivity activity) {
@@ -230,12 +241,13 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                 "value", map("active", false, "error", message == null ? "PiP failed" : message)));
     }
 
-    private void bringHostToFront() {
-        Context context = host != null ? host : applicationContext;
+    void bringHostToFront(Activity source) {
+        Context context = source != null ? source : applicationContext;
         if (context != null) context.startActivity(new Intent(context, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT |
                         Intent.FLAG_ACTIVITY_NO_ANIMATION),
                 ActivityOptions.makeCustomAnimation(context, 0, 0).toBundle());
+        if (playbackActivity != null) finishRestoreIfReady(playbackActivity);
     }
 
     private static Map<String, Object> map(Object... entries) {

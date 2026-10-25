@@ -50,6 +50,8 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
     @Override
     protected void onPostResume() {
         super.onPostResume();
+        restoreState.foregroundReady(true);
+        launchHostIfReady();
         // makeLaunchIntoPip is an optimization, not an acknowledgment. Some
         // systems still resume this Activity normally; explicitly enter there.
         // Give direct entry its first frame before applying this fallback.
@@ -131,6 +133,41 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
         if (!isFinishing() && restoreState.resumed(isInPictureInPictureMode())) {
             plugin.restore(this);
         }
+    }
+
+    @Override
+    protected void onPause() {
+        restoreState.foregroundReady(false);
+        super.onPause();
+    }
+
+    void requestHostForeground() {
+        restoreState.requestHostLaunch();
+        launchHostIfReady();
+    }
+
+    private void launchHostIfReady() {
+        if (!stoppedByApp && !isFinishing() &&
+                restoreState.takeHostLaunch(isInPictureInPictureMode())) {
+            // Use the expanded, resumed Activity's token. The Flutter host may
+            // still be in a background task when expansion came from another app.
+            plugin.bringHostToFront(this);
+        }
+    }
+
+    void pageRestored() {
+        restoreState.pageRestored();
+        plugin.finishRestoreIfReady(this);
+    }
+
+    boolean readyToFinishRestore(boolean hostFocused) {
+        if (hostFocused) restoreState.hostFocused();
+        return restoreState.readyToFinish();
+    }
+
+    void hostFocused() {
+        restoreState.hostFocused();
+        plugin.finishRestoreIfReady(this);
     }
 
     @Override

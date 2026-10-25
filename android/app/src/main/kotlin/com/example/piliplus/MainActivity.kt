@@ -39,6 +39,11 @@ class MainActivity : AudioServiceActivity() {
         super.onDestroy()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) SystemPipPlugin.instance?.onHostFocused(this)
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         if (SystemPipPlugin.instance?.onUserLeaveHint() == true) return

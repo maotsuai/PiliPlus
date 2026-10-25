@@ -44,6 +44,48 @@ public final class PipRestoreStateCheck {
         check(!dismissed.resumed(false), "a closed window cannot restore later");
         check(!dismissed.shouldDismiss(true), "app-driven close must not report a user dismissal");
         check(!dismissed.isRestoring(), "app-driven close cancels restoration ownership");
+
+        PipRestoreState background = new PipRestoreState();
+        background.started();
+        background.modeChanged(false);
+        background.requestHostLaunch();
+        check(!background.takeHostLaunch(false), "do not launch from a paused PiP Activity");
+        background.pageRestored();
+        check(!background.readyToFinish(), "background audio/page recovery is not foreground UI recovery");
+        background.foregroundReady(true);
+        check(background.takeHostLaunch(false), "launch the host from the resumed expanded Activity");
+        check(!background.readyToFinish(), "keep restoration until the host window has focus");
+        background.hostFocused();
+        check(background.readyToFinish(), "page acknowledgment plus a focused host completes restoration");
+        check(!background.takeHostLaunch(false), "focus/lifecycle callbacks cannot relaunch the host twice");
+
+        PipRestoreState focusedFirst = new PipRestoreState();
+        focusedFirst.started();
+        focusedFirst.foregroundReady(true);
+        focusedFirst.modeChanged(false);
+        focusedFirst.requestHostLaunch();
+        check(focusedFirst.takeHostLaunch(false), "in-app expansion can raise the host immediately");
+        focusedFirst.hostFocused();
+        check(!focusedFirst.readyToFinish(), "host focus alone does not discard an unrestored page");
+        focusedFirst.pageRestored();
+        check(focusedFirst.readyToFinish(), "either acknowledgment order completes restoration");
+
+        PipRestoreState pendingClose = new PipRestoreState();
+        pendingClose.started();
+        pendingClose.modeChanged(false);
+        pendingClose.requestHostLaunch();
+        pendingClose.close();
+        pendingClose.foregroundReady(true);
+        pendingClose.pageRestored();
+        pendingClose.hostFocused();
+        check(!pendingClose.takeHostLaunch(false), "closing while pending cannot bring the app forward later");
+        check(!pendingClose.readyToFinish(), "a canceled restoration cannot be completed by stale callbacks");
+
+        PipRestoreState stillPip = new PipRestoreState();
+        stillPip.started();
+        stillPip.foregroundReady(true);
+        stillPip.requestHostLaunch();
+        check(!stillPip.takeHostLaunch(true), "ordinary PiP playback must never pull the app forward");
         System.out.println("PiP restore lifecycle checks passed");
     }
 }
