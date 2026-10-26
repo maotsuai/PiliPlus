@@ -52,14 +52,13 @@ public final class PipActivity extends Activity implements TextureView.SurfaceTe
         super.onPostResume();
         restoreState.foregroundReady(true);
         launchHostIfReady();
-        // makeLaunchIntoPip is an optimization, not an acknowledgment. Some
-        // systems still resume this Activity normally; explicitly enter there.
-        // Give direct entry its first frame before applying this fallback.
-        video.postDelayed(() -> {
+        // Enter from this resumed window without marking it as content PiP:
+        // this Activity owns a separate task with no content-PiP host to return to.
+        video.post(() -> {
             if (stoppedByApp || reportedStarted || isFinishing()) return;
             if (isInPictureInPictureMode()) confirmPipMode();
             else enterPip();
-        }, Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? 100 : 0);
+        });
     }
 
     void updateParams() {

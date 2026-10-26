@@ -115,11 +115,10 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION)
                     .putExtra("sessionId", id)
                     .putExtra("leavingApp", leavingApp);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                host.startActivity(intent, ActivityOptions.makeLaunchIntoPip(buildParams(null)).toBundle());
-            } else {
-                host.startActivity(intent, ActivityOptions.makeCustomAnimation(host, 0, 0).toBundle());
-            }
+            // Content PiP requires a host in the same task. This independent
+            // Activity enters PiP explicitly, so expansion resumes it normally
+            // instead of asking SystemUI to return to a missing host task.
+            host.startActivity(intent, ActivityOptions.makeCustomAnimation(host, 0, 0).toBundle());
             handler.postDelayed(() -> {
                 if (launching && sessionId() == id) fail("PiP startup timed out: " +
                         (playbackActivity == null ? "Activity missing" : playbackActivity.startupState()));
@@ -169,8 +168,7 @@ public final class SystemPipPlugin implements FlutterPlugin, ActivityAware, Meth
         launching = false;
         AndroidHelper.isPipMode = true;
         emit("onStateChanged", map("active", true, "started", true));
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU &&
-                !activity.getIntent().getBooleanExtra("leavingApp", false)) bringHostToFront(host);
+        if (!activity.getIntent().getBooleanExtra("leavingApp", false)) bringHostToFront(host);
     }
 
     PictureInPictureParams buildParams(Rect source) {
