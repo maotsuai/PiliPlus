@@ -68,6 +68,26 @@ void main() {
     expect(session.detached, isFalse);
   });
 
+  test('cancelled navigation leaves playback cleanup with its owner', () async {
+    await session.didStart();
+    final visible = Completer<void>();
+    final restored = session.restore(ready: visible.future);
+    session
+      ..cancelRestore()
+      ..cancelRestore();
+    expect(await restored, isFalse);
+    expect(session.completeRestore(), isFalse);
+    expect(session.detached, isTrue);
+    visible.complete();
+    await Future<void>.value();
+    await Future<void>.value();
+    expect(events, ['retain', 'pop page']);
+    session
+      ..close()
+      ..close();
+    expect(events, ['retain', 'pop page', 'stop']);
+  });
+
   test(
     'playback handoff finishes after the outgoing route is disposed',
     () async {

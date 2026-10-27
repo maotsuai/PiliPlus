@@ -72,6 +72,14 @@ class PipPlaybackSession {
     return true;
   }
 
+  /// Invalidates pending navigation; the caller still owns playback cleanup.
+  void cancelRestore() {
+    if (!restoring) return;
+    _generation++;
+    restoring = false;
+    _finishRestore(false);
+  }
+
   void close() {
     _generation++;
     final release = detached;

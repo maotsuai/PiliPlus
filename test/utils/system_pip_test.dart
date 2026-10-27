@@ -206,6 +206,156 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Android queues the playback page before focus and acknowledges a resumed frame',
+    (tester) async {
+      await tester.pumpWidget(const SizedBox());
+      bind();
+      final id = await enter();
+      await native('onStateChanged', id, {'active': true, 'started': true});
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      var acknowledged = false;
+      final restored = native('restore', id, {'waitForForeground': true}).then((
+        value,
+      ) {
+        acknowledged = true;
+        return value;
+      });
+      await tester.pump();
+      expect(events, ['retain', 'pop']);
+
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      await tester.pump();
+      expect(events, ['retain', 'pop', 'push', 'handoff']);
+      expect(acknowledged, isFalse);
+
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.idle();
+      expect(acknowledged, isFalse);
+      await tester.pump();
+      expect(await restored, isTrue);
+      expect(events.where((event) => event == 'push'), hasLength(1));
+    },
+  );
+
+  testWidgets('Android can queue restoration in an already inactive host', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    bind();
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    final restored = native('restore', id, {'waitForForeground': true});
+    await tester.pump();
+    expect(events, ['retain', 'pop', 'push', 'handoff']);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(await restored, isTrue);
+  });
+
+  testWidgets(
+    'new playback cancels an acknowledgment after the page claims PiP',
+    (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SizedBox());
+      bind();
+      final id = await enter();
+      await native('onStateChanged', id, {'active': true, 'started': true});
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      final restored = native('restore', id, {'waitForForeground': true});
+      await tester.pump();
+      expect(events, ['retain', 'pop', 'push', 'handoff']);
+      expect(SystemPipHelper.isDetached, isFalse);
+      SystemPipHelper.closeForNewPlayback(playbackKey: 'live/99');
+      expect(await restored, isFalse);
+
+      bind();
+      final nextId = await enter();
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(nextId, isNot(id));
+      expect(SystemPipHelper.isActive, isTrue);
+      expect(events.where((event) => event == 'push'), hasLength(1));
+    },
+  );
+
+  testWidgets('closing restoration cancels a pending frame without resuming', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    bind();
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    final restored = native('restore', id, {'waitForForeground': true});
+    await tester.idle();
+    expect(events, ['retain', 'pop', 'push', 'handoff']);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    SystemPipHelper.dispose();
+    expect(await restored, isFalse);
+  });
+
+  testWidgets('disposing a paused restore cannot navigate after resuming', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    bind();
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    final restored = native('restore', id, {'waitForForeground': true});
+    await tester.pump();
+    SystemPipHelper.dispose();
+    expect(await restored, isFalse);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(events, ['retain', 'pop']);
+  });
+
+  testWidgets('disposing before the restored page claims playback cancels it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    final session = bind(completeOnRestore: false);
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    final restored = native('restore', id, {'waitForForeground': true});
+    await tester.pump();
+    expect(events, ['retain', 'pop', 'push']);
+    SystemPipHelper.dispose();
+    expect(await restored, isFalse);
+    expect(session.completeRestore(), isFalse);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(events, ['retain', 'pop', 'push']);
+  });
+
+  testWidgets('losing focus before the restored frame defers acknowledgment', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const SizedBox());
+    bind();
+    final id = await enter();
+    await native('onStateChanged', id, {'active': true, 'started': true});
+    var acknowledged = false;
+    final restored = native('restore', id, {'waitForForeground': true}).then((
+      value,
+    ) {
+      acknowledged = true;
+      return value;
+    });
+    await tester.idle();
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(acknowledged, isFalse);
+    binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(await restored, isTrue);
+    expect(events, ['retain', 'pop', 'push', 'handoff']);
+  });
+
   testWidgets('opening new playback cancels an Android foreground wait', (
     tester,
   ) async {

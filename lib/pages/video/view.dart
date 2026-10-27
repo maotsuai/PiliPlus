@@ -67,6 +67,7 @@ import 'package:PiliPlus/utils/max_screen_size.dart';
 import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
+import 'package:PiliPlus/utils/pip_restore_route.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
@@ -235,14 +236,22 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       },
       onRestore: () {
         final args = restoreArguments!;
-        PageUtils.toDupNamed(
-          '/videoV',
-          arguments: {
-            ...args,
-            'progress': player.positionInMilliseconds,
-            'heroTag': Utils.makeHeroTag(args['cid']),
-          },
-        );
+        final arguments = {
+          ...args,
+          'progress': player.positionInMilliseconds,
+          'heroTag': Utils.makeHeroTag(args['cid']),
+        };
+        if (Platform.isAndroid) {
+          Get.key.currentState!.push<void>(
+            PipRestoreRoute(
+              name: '/videoV',
+              page: () => const VideoDetailPageV(),
+              arguments: arguments,
+            ),
+          );
+        } else {
+          PageUtils.toDupNamed('/videoV', arguments: arguments);
+        }
       },
     );
   }

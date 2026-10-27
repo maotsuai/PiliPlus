@@ -41,6 +41,7 @@ import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:PiliPlus/utils/max_screen_size.dart';
 import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
+import 'package:PiliPlus/utils/pip_restore_route.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/share_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -110,7 +111,19 @@ class _LiveRoomPageState extends State<LiveRoomPage>
         restoreRoomId = _liveRoomController.roomId;
         return _leaveForPip();
       },
-      onRestore: () => PageUtils.toLiveRoom(restoreRoomId),
+      onRestore: () {
+        if (Platform.isAndroid && restoreRoomId != null) {
+          Get.key.currentState!.push<void>(
+            PipRestoreRoute(
+              name: '/liveRoom',
+              page: () => const LiveRoomPage(),
+              arguments: restoreRoomId,
+            ),
+          );
+        } else {
+          PageUtils.toLiveRoom(restoreRoomId);
+        }
+      },
     );
   }
 

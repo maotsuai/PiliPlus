@@ -23,6 +23,7 @@ abstract final class SystemPipHelper {
   static VoidCallback? _pause;
   static ValueChanged<int>? _skip;
   static VoidCallback? _onRestored;
+  static final _pendingRestores = <_PipRestoreWaiter>{};
   static bool get needsUpdate => isActive || _autoEnter;
   static bool get isDetached => _playback?.detached == true;
 
@@ -101,16 +102,19 @@ abstract final class SystemPipHelper {
         if (session?.detached != true) return false;
         final waitForForeground =
             value is Map && value['waitForForeground'] == true;
-        final foreground = waitForForeground ? _PipForegroundWaiter() : null;
+        final foreground = waitForForeground
+            ? _PipRestoreWaiter(session!.cancelRestore)
+            : null;
+        if (foreground != null) _pendingRestores.add(foreground);
         try {
           // Mark restoration immediately, before the native window is stopped.
-          // Navigation waits for MainActivity to be visible and ready to draw.
-          final restored = await session!.restore(ready: foreground?.ready);
-          if (restored && waitForForeground) {
-            await WidgetsBinding.instance.endOfFrame;
-          }
-          return restored;
+          // Navigation can precede focus, but native PiP stays alive until the
+          // restored page has a frame in the resumed host.
+          final restored = await session!.restore(ready: foreground?.visible);
+          if (!restored) return false;
+          return foreground == null ? true : await foreground.acknowledge();
         } finally {
+          _pendingRestores.remove(foreground);
           foreground?.dispose();
         }
       case 'setPlaying':
@@ -197,6 +201,9 @@ abstract final class SystemPipHelper {
   }
 
   static void dispose() {
+    for (final restore in _pendingRestores) {
+      restore.cancel();
+    }
     _restoreAndroidSurface();
     _sessionId++;
     _textureId = null;
@@ -211,26 +218,60 @@ abstract final class SystemPipHelper {
   }
 }
 
-class _PipForegroundWaiter with WidgetsBindingObserver {
-  _PipForegroundWaiter() {
-    final binding = WidgetsBinding.instance;
-    if (binding.lifecycleState == AppLifecycleState.resumed) {
-      _ready.complete();
-    } else {
-      binding.addObserver(this);
+class _PipRestoreWaiter with WidgetsBindingObserver {
+  _PipRestoreWaiter(this._onCancel) {
+    final binding = WidgetsBinding.instance..addObserver(this);
+    _update(binding.lifecycleState);
+  }
+
+  final _visible = Completer<void>();
+  final VoidCallback _onCancel;
+  var _resumed = Completer<void>();
+  final _cancelled = Completer<void>();
+  Future<void> get visible => _visible.future;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _update(state);
+
+  void _update(AppLifecycleState? state) {
+    // Flutter schedules frames in inactive, before the host gains input focus.
+    if ((state == AppLifecycleState.inactive ||
+            state == AppLifecycleState.resumed) &&
+        !_visible.isCompleted) {
+      _visible.complete();
+    }
+    if (state == AppLifecycleState.resumed) {
+      if (!_resumed.isCompleted) _resumed.complete();
+    } else if (_resumed.isCompleted) {
+      _resumed = Completer<void>();
     }
   }
 
-  final _ready = Completer<void>();
-  Future<void> get ready => _ready.future;
+  Future<bool> acknowledge() async {
+    while (!_cancelled.isCompleted) {
+      await _resumed.future;
+      if (_cancelled.isCompleted) return false;
+      final frame = await Future.any([
+        WidgetsBinding.instance.endOfFrame.then((_) => true),
+        _cancelled.future.then((_) => false),
+      ]);
+      if (!frame || _cancelled.isCompleted) return false;
+      if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
+        return true;
+      }
+    }
+    return false;
+  }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) dispose();
+  void cancel() {
+    if (_cancelled.isCompleted) return;
+    _onCancel();
+    _cancelled.complete();
+    if (!_visible.isCompleted) _visible.complete();
+    if (!_resumed.isCompleted) _resumed.complete();
   }
 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (!_ready.isCompleted) _ready.complete();
   }
 }
