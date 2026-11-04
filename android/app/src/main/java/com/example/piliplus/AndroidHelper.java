@@ -182,8 +182,7 @@ public final class AndroidHelper {
 
     @RequiresApi(api = Build.VERSION_CODES.O)
     public static void updatePipActions(long engineId, boolean isLive, boolean isPlaying) {
-        Activity activity = SystemPipPlugin.pipActivity();
-        if (activity == null) return;
+        Activity activity = JniFlutterPlugin.getActivity(engineId);
         assert activity != null;
         PictureInPictureParams.Builder builder = new PictureInPictureParams.Builder();
         setPipActions(activity, builder, isLive, isPlaying);
@@ -191,7 +190,7 @@ public final class AndroidHelper {
     }
 
     @RequiresApi(api = Build.VERSION_CODES.O)
-    static void setPipActions(Context context, PictureInPictureParams.Builder builder, boolean isLive, boolean isPlaying) {
+    private static void setPipActions(Context context, PictureInPictureParams.Builder builder, boolean isLive, boolean isPlaying) {
         ArrayList<RemoteAction> actionList = new ArrayList<>(3);
         if (!isLive) {
             actionList.add(getRemoteAction(context, R.drawable.ic_player_rewind_10s, "ACTION_REWIND", (int) PlaybackState.ACTION_REWIND));

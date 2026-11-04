@@ -67,13 +67,10 @@ import 'package:PiliPlus/utils/max_screen_size.dart';
 import 'package:PiliPlus/utils/mobile_observer.dart';
 import 'package:PiliPlus/utils/num_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
-import 'package:PiliPlus/utils/pip_restore_route.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
 import 'package:PiliPlus/utils/storage_key.dart';
-import 'package:PiliPlus/utils/system_pip.dart';
 import 'package:PiliPlus/utils/theme_utils.dart';
-import 'package:PiliPlus/utils/utils.dart';
 import 'package:extended_nested_scroll_view/extended_nested_scroll_view.dart';
 import 'package:flutter/foundation.dart' show kDebugMode, clampDouble;
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
@@ -128,7 +125,6 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       videoDetailController.plPlayerController.pipNoDanmaku;
 
   bool isShowing = true;
-  bool _minimizedToPip = false;
 
   bool get isFullScreen =>
       videoDetailController.plPlayerController.isFullScreen.value;
@@ -214,70 +210,6 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
       playCallBack,
       playOwner: (tag: heroTag, type: introController.runtimeType),
     );
-    final player = videoDetailController.plPlayerController;
-    Map? restoreArguments;
-    player.bindPipPlayback(
-      playbackKey: () => 'video/${videoDetailController.cid.value}',
-      onMinimize: () {
-        final video = videoDetailController;
-        restoreArguments = {
-          ...video.args,
-          'aid': video.aid,
-          'bvid': video.bvid,
-          'cid': video.cid.value,
-          'epId': video.epId,
-          'seasonId': video.seasonId,
-          'pgcType': video.pgcType,
-          'cover': video.cover.value,
-          'isVertical': video.isVertical.value,
-          if (video.isFileSource) 'entry': video.entry,
-        };
-        return _leaveForPip();
-      },
-      onRestore: () {
-        final args = restoreArguments!;
-        final arguments = {
-          ...args,
-          'progress': player.positionInMilliseconds,
-          'heroTag': Utils.makeHeroTag(args['cid']),
-        };
-        if (Platform.isAndroid) {
-          Get.key.currentState!.push<void>(
-            PipRestoreRoute(
-              name: '/videoV',
-              page: () => const VideoDetailPageV(),
-              arguments: arguments,
-            ),
-          );
-        } else {
-          PageUtils.toDupNamed('/videoV', arguments: arguments);
-        }
-      },
-    );
-  }
-
-  Future<void> _leaveForPip() async {
-    if (!mounted) return;
-    _minimizedToPip = true;
-    final player = videoDetailController.plPlayerController;
-    final route = ModalRoute.of(context)!;
-    final navigator = Navigator.of(context);
-    await player.triggerFullScreen(status: false);
-    if (!mounted) return;
-    player.danmakuController = null;
-    PlPlayerController.setPlayCallBack(player.play);
-    if (route.isCurrent) {
-      if (route.isFirst) {
-        Get.offNamed('/');
-      } else {
-        Get.back();
-      }
-    } else if (route.isActive) {
-      navigator.removeRoute(route);
-    }
-    if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed) {
-      await route.completed;
-    }
   }
 
   Future<void>? playCallBack() {
@@ -430,9 +362,7 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
     }
 
     if (!videoDetailController.plPlayerController.isCloseAll) {
-      if (!_minimizedToPip) {
-        videoPlayerServiceHandler?.onVideoDetailDispose(heroTag);
-      }
+      videoPlayerServiceHandler?.onVideoDetailDispose(heroTag);
       if (plPlayerController != null) {
         videoDetailController.makeHeartBeat();
         plPlayerController!.dispose();
@@ -449,7 +379,6 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   // 离开当前页面时
   void didPushNext() {
     super.didPushNext();
-    if (SystemPipHelper.isDetached) return;
     isShowing = false;
 
     removeObserverMobile(this);
@@ -478,8 +407,6 @@ class _VideoDetailPageVState extends State<VideoDetailPageV>
   // 返回当前页面时
   void didPopNext() {
     super.didPopNext();
-
-    if (SystemPipHelper.isDetached) return;
 
     if (videoDetailController.plPlayerController.isCloseAll) {
       return;

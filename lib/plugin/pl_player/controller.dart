@@ -1,4 +1,4 @@
-import 'dart:async' show FutureOr, StreamSubscription, Timer;
+import 'dart:async' show StreamSubscription, Timer;
 import 'dart:convert' show ascii, utf8;
 import 'dart:io' show Platform;
 import 'dart:math' show max, min;
@@ -30,12 +30,11 @@ import 'package:PiliPlus/plugin/pl_player/models/video_fit_type.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/danmaku_options.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/playback_watchdog.dart';
-import 'package:PiliPlus/plugin/pl_player/utils/pip_session.dart';
-import 'package:PiliPlus/plugin/pl_player/utils/android_surface.dart';
-import 'package:PiliPlus/plugin/pl_player/video_controller.dart';
 import 'package:PiliPlus/services/playback_background.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/accounts.dart';
+import 'package:PiliPlus/utils/android/android_helper.dart';
+import 'package:PiliPlus/utils/android/bindings.g.dart';
 import 'package:PiliPlus/utils/asset_utils.dart';
 import 'package:PiliPlus/utils/desktop/window_controller.dart';
 import 'package:PiliPlus/utils/device_utils.dart';
@@ -45,7 +44,8 @@ import 'package:PiliPlus/utils/extension/native_geometry_ext.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
-import 'package:PiliPlus/utils/system_pip.dart';
+import 'package:PiliPlus/utils/ios/pip_helper.dart';
+import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/path_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
 import 'package:PiliPlus/utils/storage.dart';
@@ -213,7 +213,9 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       isLive ? enableShowLiveDanmaku : enableShowDanmaku;
 
   late final bool autoPiP = Pref.autoPiP;
-  bool get isPipMode => PlatformUtils.isDesktop && isDesktopPip;
+  bool get isPipMode =>
+      (Platform.isAndroid && AndroidHelper.isPipMode) ||
+      (PlatformUtils.isDesktop && isDesktopPip);
   late bool isDesktopPip = false;
   late nativeapi.Rectangle _lastWindowBounds;
   static nativeapi.Rectangle? _lastPipBounds;
@@ -350,83 +352,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   late bool _isAutoEnterPip = false;
   bool get isAutoEnterPip => _isAutoEnterPip;
-  bool _pipRetained = false;
-  bool _restoredFromPip = false;
-  bool get pipRetained => _pipRetained;
-
-  bool takePipRestore() {
-    final restored = _restoredFromPip;
-    _restoredFromPip = false;
-    return restored;
-  }
-
-  void bindPipPlayback({
-    required String Function() playbackKey,
-    required FutureOr<void> Function() onMinimize,
-    required VoidCallback onRestore,
-  }) {
-    if (!PlatformUtils.isMobile) return;
-    final ownerTag = _playOwner?.tag;
-    SystemPipHelper.bind(
-      PipPlaybackSession(
-        onRetain: () {
-          _playerCount++;
-          _pipRetained = true;
-        },
-        onRelease: (stop) {
-          _pipRetained = false;
-          if (ownerTag != null) {
-            videoPlayerServiceHandler?.onVideoDetailDispose(
-              ownerTag,
-              updateCurrent: stop,
-            );
-          }
-          if (stop) pause();
-          // Release the OS window's reference after a page has taken over.
-          dispose();
-        },
-        onMinimize: onMinimize,
-        onRestore: onRestore,
-        onReady: (isCurrent) async {
-          // AVKit's transition can stall an output that still reports playing.
-          // A real pause -> play edge restarts that output; repeating play alone
-          // does not. Do this once, after the outgoing route is disposed.
-          if (Platform.isIOS &&
-              isCurrent() &&
-              _pipRetained &&
-              _wantsToPlay &&
-              identical(_instance, this)) {
-            final request = _playRequest;
-            await _videoPlayerController?.pause();
-            // A user pause, interruption or new source wins the race.
-            // Expansion may hand ownership back while pause is in flight. The
-            // same play request must still resume on that page in this case.
-            if (request == _playRequest &&
-                _wantsToPlay &&
-                identical(_instance, this)) {
-              await play();
-            }
-          }
-        },
-      ),
-      playbackKey: playbackKey,
-      androidSurface: () => switch (_videoController) {
-        AndroidSurfaceTarget target => target,
-        _ => null,
-      },
-      onPlay: play,
-      onPause: pause,
-      onSkip: (offset) => seekTo(
-        Duration(milliseconds: positionInMilliseconds + offset),
-        isSeek: false,
-      ),
-      onRestored: () {
-        if (_isAutoEnterPip && playerStatus.isPlaying) {
-          enterPip(autoEnter: true);
-        }
-      },
-    );
-  }
 
   static bool get _isCurrVideoPage {
     final routing = Get.routing;
@@ -442,30 +367,41 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   void enterPip({bool autoEnter = false}) {
     if (videoPlayerController case NativePlayer(:final state)) {
-      if (PlatformUtils.isMobile) {
+      if (Platform.isIOS) {
         if (videoController?.id.value case final textureId?) {
-          SystemPipHelper.enter(
+          IOSPipHelper.enter(
             textureId,
             width: state.width == 0 ? width : state.width,
             height: state.height == 0 ? height : state.height,
             autoEnter: autoEnter,
-            state: _systemPipState(state),
+            state: _iosPipState(state),
           );
         }
         return;
       }
+      PageUtils.enterPip(
+        autoEnter: autoEnter,
+        width: state.width == 0 ? width : state.width,
+        height: state.height == 0 ? height : state.height,
+        isLive: isLive,
+        isPlaying: playerStatus.isPlaying,
+      );
     }
   }
 
   void _disableAutoEnterPip() {
     if (_isAutoEnterPip) {
-      SystemPipHelper.disableAutoEnter();
+      if (Platform.isIOS) {
+        IOSPipHelper.disableAutoEnter();
+      } else {
+        PiliAndroidHelper.disableAutoEnterPip();
+      }
     }
   }
 
-  Map<String, Object> _systemPipState(PlayerState state, [Duration? position]) {
+  Map<String, Object> _iosPipState(PlayerState state, [Duration? position]) {
     return {
-      'isPlaying': _wantsToPlay && playerStatus.isPlaying,
+      'isPlaying': playerStatus.isPlaying,
       'isBuffering': isBuffering.value,
       'isLive': isLive,
       'position': (position ?? state.position).inMilliseconds,
@@ -474,10 +410,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     };
   }
 
-  void _updateSystemPip([Duration? position]) {
-    if (PlatformUtils.isMobile && SystemPipHelper.needsUpdate) {
+  void _updateIOSPip([Duration? position]) {
+    if (Platform.isIOS && IOSPipHelper.needsUpdate) {
       if (_videoPlayerController case final player?) {
-        SystemPipHelper.update(_systemPipState(player.state, position));
+        IOSPipHelper.update(_iosPipState(player.state, position));
       }
     }
   }
@@ -679,7 +615,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   void _onOrientationChanged(OrientationParams param) {
     _orientation = param.orientation;
-    if ((Platform.isIOS && !visible) || _pipRetained) return;
+    if (Platform.isIOS && !visible) return;
     final orientation = param.orientation;
     final isFullScreen = this.isFullScreen.value;
     if (checkIsAutoRotate &&
@@ -734,30 +670,31 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       enableHeart = false;
     }
 
-    if (PlatformUtils.isMobile && autoPiP && SystemPipHelper.isAvailable) {
+    if (Platform.isAndroid && autoPiP) {
+      if (DeviceUtils.sdkInt < 31) {
+        final func = Runnable.implement($Runnable(run: _onUserLeaveHint));
+        AndroidHelper$ToDart.onUserLeaveHint = func;
+        func.release();
+      } else {
+        _isAutoEnterPip = true;
+      }
+    } else if (Platform.isIOS && autoPiP && IOSPipHelper.isAvailable) {
       _isAutoEnterPip = true;
     }
   }
 
+  void _onUserLeaveHint() {
+    if (playerStatus.isPlaying && _isCurrVideoPage) {
+      enterPip();
+    }
+  }
+
   // 获取实例 传参
-  static PlPlayerController getInstance({
-    bool isLive = false,
-    required String playbackKey,
-  }) {
-    if (PlatformUtils.isMobile) {
-      SystemPipHelper.closeForNewPlayback(playbackKey: playbackKey);
-    }
+  static PlPlayerController getInstance({bool isLive = false}) {
     // 如果实例尚未创建，则创建一个新实例
-    final controller = (_instance ??= PlPlayerController._())
+    return (_instance ??= PlPlayerController._())
       ..isLive = isLive
-      ..visible =
-          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed
-      ..showDanmaku = true
       .._playerCount += 1;
-    if (PlatformUtils.isMobile) {
-      controller._restoredFromPip = SystemPipHelper.completeRestore();
-    }
-    return controller;
   }
 
   bool _processing = false;
@@ -793,9 +730,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     bool autoFullScreenFlag = false,
   }) async {
     try {
-      if (PlatformUtils.isMobile && SystemPipHelper.isDetached) {
-        SystemPipHelper.closeForNewPlayback();
-      }
       _wantsToPlay = false;
       _playRequest++;
       _playbackWatchdog.stop();
@@ -940,7 +874,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
     assert(_videoController == null);
 
-    _videoController = await createVideoController(
+    _videoController = await VideoController.create(
       player,
       configuration: VideoControllerConfiguration(
         enableHardwareAcceleration: hwdec != null,
@@ -1069,9 +1003,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         _processing ||
         isSeeking.value ||
         dataSource is FileSource ||
-        player.current.isEmpty) {
-      return;
-    }
+        player.current.isEmpty) return;
 
     var media = player.current.last;
     // Live streams reconnect at the live edge; VOD keeps its current position.
@@ -1136,17 +1068,14 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
   Future<void> _syncBackgroundPlayback({bool? buffering}) {
     return PlaybackBackground.update(
       playing: _wantsToPlay,
-      allowed:
-          continuePlayInBackground.value ||
-          (PlatformUtils.isMobile && SystemPipHelper.isActive),
+      allowed: continuePlayInBackground.value,
       buffering: buffering ?? isBuffering.value,
     );
   }
 
   void _updatePlaybackState({Duration? position, String? debugLabel}) {
     _syncBackgroundPlayback();
-    final recovering =
-        _wantsToPlay &&
+    final recovering = _wantsToPlay &&
         (isBuffering.value || (isLive && playerStatus.isCompleted));
     videoPlayerServiceHandler?.onUpdateState(
       recovering ? PlayerStatus.playing : playerStatus,
@@ -1156,7 +1085,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       speed: playbackSpeed,
       debugLabel: debugLabel,
     );
-    _updateSystemPip(position);
+    _updateIOSPip(position);
   }
 
   /// 播放事件监听
@@ -1173,7 +1102,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           WakelockPlus.enable();
 
           if (_isAutoEnterPip) {
-            if (_isCurrVideoPage || _pipRetained) {
+            if (_isCurrVideoPage) {
               enterPip(autoEnter: true);
             } else {
               _disableAutoEnterPip();
@@ -1183,7 +1112,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
           playerStatus = .paused;
           _startWakeLockTimer();
           _disableAutoEnterPip();
-          _updateSystemPip();
+          _updateIOSPip();
         }
 
         for (final element in _statusListeners) {
@@ -1238,7 +1167,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
         final posInSeconds = position.inSeconds;
 
         if (posInSeconds != this.position.value) {
-          if (Platform.isIOS) _updateSystemPip(position);
           if (posInSeconds == 0 && playerStatus.isPlaying) {
             _updatePlaybackState(position: position);
           }
@@ -1254,7 +1182,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
       }),
       stream.duration.listen((Duration duration) {
         updateDuration(duration);
-        _updateSystemPip();
+        _updateIOSPip();
       }),
       stream.buffer.listen((Duration buffer) {
         buffered.value = buffer.inSeconds;
@@ -1333,7 +1261,7 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     danmakuController?.clear();
     try {
       await _videoPlayerController?.seek(position);
-      _updateSystemPip(position);
+      _updateIOSPip(position);
     } catch (e) {
       if (kDebugMode) debugPrint('seek failed: $e');
     } finally {
@@ -1403,7 +1331,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (!activated) {
       _wantsToPlay = false;
       _syncBackgroundPlayback();
-      _updateSystemPip();
       return;
     }
     // 播放时自动隐藏控制条
@@ -1868,8 +1795,10 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     if (showSeekPreview) {
       _clearPreview();
     }
-    if (PlatformUtils.isMobile) {
-      SystemPipHelper.dispose();
+    if (Platform.isAndroid) {
+      AndroidHelper$ToDart.onUserLeaveHint = null;
+    } else if (Platform.isIOS) {
+      IOSPipHelper.dispose();
     }
     _timer?.cancel();
     // _position.close();
@@ -2038,7 +1967,6 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
 
   void onPopInvokedWithResult(bool didPop, Object? result) {
     if (didPop) {
-      if (_pipRetained) return;
       if (playerStatus.isPlaying) {
         pause();
       }

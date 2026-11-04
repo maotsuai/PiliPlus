@@ -10,9 +10,6 @@ import io.flutter.embedding.engine.FlutterEngine
 class MainActivity : AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        if (!flutterEngine.plugins.has(SystemPipPlugin::class.java)) {
-            flutterEngine.plugins.add(SystemPipPlugin())
-        }
         if (!flutterEngine.plugins.has(PlaybackRecoveryPlugin::class.java)) {
             flutterEngine.plugins.add(PlaybackRecoveryPlugin())
         }
@@ -39,14 +36,8 @@ class MainActivity : AudioServiceActivity() {
         super.onDestroy()
     }
 
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) SystemPipPlugin.instance?.onHostFocused(this)
-    }
-
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (SystemPipPlugin.instance?.onUserLeaveHint() == true) return
         AndroidHelper.ToDart.onUserLeaveHint?.run()
     }
 

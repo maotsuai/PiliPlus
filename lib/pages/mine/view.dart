@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:PiliPlus/plugin/pl_player/video_controller.dart';
 import 'package:PiliPlus/common/assets.dart';
 import 'package:PiliPlus/common/style.dart';
 import 'package:PiliPlus/common/widgets/bili_theme.dart';
@@ -830,7 +829,7 @@ class _LoopVideoBgState extends State<_LoopVideoBg>
     Player? initializingPlayer;
     try {
       initializingPlayer = await Player.create();
-      final controller = await createVideoController(initializingPlayer);
+      final controller = await VideoController.create(initializingPlayer);
       if (!mounted) {
         initializingPlayer.dispose();
         return;
