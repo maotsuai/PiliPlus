@@ -14,6 +14,14 @@ abstract final class PlaybackBackground {
   static int _lastReport = -1000;
   static Duration? _lastPosition;
 
+  /// Android's original PiP Activity reports transitions on this channel.
+  static void init({required AsyncCallback onPipModeChanged}) {
+    if (!Platform.isAndroid) return;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'pipModeChanged') await onPipModeChanged();
+    });
+  }
+
   static Future<void> update({
     required bool playing,
     required bool allowed,

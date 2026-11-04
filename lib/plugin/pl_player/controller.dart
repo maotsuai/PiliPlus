@@ -1074,10 +1074,19 @@ class PlPlayerController with BlockConfigMixin, AudioNormalizationMixin {
     _updatePlaybackState(debugLabel: 'onVideoPaused');
   }
 
+  bool get _isSystemPipActive => Platform.isAndroid
+      ? AndroidHelper.isPipMode
+      : Platform.isIOS && IOSPipHelper.isActive;
+
+  /// Recompute eligibility even when playback and buffering did not change.
+  static Future<void> onSystemPipModeChanged() async {
+    await _instance?._syncBackgroundPlayback();
+  }
+
   Future<void> _syncBackgroundPlayback({bool? buffering}) {
     return PlaybackBackground.update(
       playing: _wantsToPlay,
-      allowed: continuePlayInBackground.value,
+      allowed: continuePlayInBackground.value || _isSystemPipActive,
       buffering: buffering ?? isBuffering.value,
     );
   }

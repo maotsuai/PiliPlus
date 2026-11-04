@@ -9,12 +9,14 @@ import 'package:PiliPlus/common/widgets/scale_app.dart';
 import 'package:PiliPlus/common/widgets/scroll_behavior.dart';
 import 'package:PiliPlus/http/init.dart';
 import 'package:PiliPlus/models/common/theme/theme_color_type.dart';
+import 'package:PiliPlus/plugin/pl_player/controller.dart';
 import 'package:PiliPlus/plugin/pl_player/utils/fullscreen.dart';
 import 'package:PiliPlus/router/app_pages.dart';
 import 'package:PiliPlus/services/account_service.dart';
 import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/services/download/download_service.dart';
 import 'package:PiliPlus/services/logger.dart';
+import 'package:PiliPlus/services/playback_background.dart';
 import 'package:PiliPlus/services/service_locator.dart';
 import 'package:PiliPlus/utils/cache_manager.dart';
 import 'package:PiliPlus/utils/date_utils.dart';
@@ -117,6 +119,9 @@ void main() async {
   HttpOverrides.global = _CustomHttpOverrides();
 
   if (PlatformUtils.isMobile) {
+    PlaybackBackground.init(
+      onPipModeChanged: PlPlayerController.onSystemPipModeChanged,
+    );
     if (Platform.isAndroid) MaxScreenSize.init();
     await Future.wait([
       if (Pref.horizontalScreen) ?fullMode() else ?portraitUpMode(),

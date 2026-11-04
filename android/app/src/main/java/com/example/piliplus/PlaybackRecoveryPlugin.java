@@ -60,6 +60,10 @@ public final class PlaybackRecoveryPlugin implements FlutterPlugin, MethodChanne
         result.success(null);
     }
 
+    public void onPipModeChanged() {
+        if (channel != null) channel.invokeMethod("pipModeChanged", null);
+    }
+
     private void syncLock(long now) {
         long remaining = policy.remainingMillis(now);
         if (remaining == 0) {

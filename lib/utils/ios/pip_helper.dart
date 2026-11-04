@@ -44,6 +44,7 @@ abstract final class IOSPipHelper {
             PlPlayerController.pauseIfExists();
           }
         }
+        await PlPlayerController.onSystemPipModeChanged();
       case 'setPlaying':
         if (call.arguments as bool) {
           PlPlayerController.playIfExists();
@@ -95,6 +96,8 @@ abstract final class IOSPipHelper {
 
   static void dispose() {
     _autoEnter = false;
+    isActive = false;
+    PlPlayerController.onSystemPipModeChanged();
     _channel.invokeMethod('dispose');
   }
 }

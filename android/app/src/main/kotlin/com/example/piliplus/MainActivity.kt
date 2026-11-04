@@ -31,8 +31,11 @@ class MainActivity : AudioServiceActivity() {
     }
 
     override fun onDestroy() {
-        (flutterEngine?.plugins?.get(PlaybackRecoveryPlugin::class.java)
-                as? PlaybackRecoveryPlugin)?.stop()
+        AndroidHelper.isPipMode = false
+        val recovery = flutterEngine?.plugins?.get(PlaybackRecoveryPlugin::class.java)
+                as? PlaybackRecoveryPlugin
+        recovery?.onPipModeChanged()
+        recovery?.stop()
         super.onDestroy()
     }
 
@@ -44,5 +47,7 @@ class MainActivity : AudioServiceActivity() {
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration?) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         AndroidHelper.isPipMode = isInPictureInPictureMode
+        (flutterEngine?.plugins?.get(PlaybackRecoveryPlugin::class.java)
+                as? PlaybackRecoveryPlugin)?.onPipModeChanged()
     }
 }
