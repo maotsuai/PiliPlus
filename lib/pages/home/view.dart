@@ -9,7 +9,6 @@ import 'package:PiliPlus/pages/main/controller.dart';
 import 'package:PiliPlus/pages/mine/controller.dart';
 import 'package:PiliPlus/services/bili_theme_service.dart';
 import 'package:PiliPlus/utils/extension/get_ext.dart';
-import 'package:PiliPlus/utils/extension/size_ext.dart';
 import 'package:PiliPlus/utils/feed_back.dart';
 import 'package:get/get.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
@@ -103,7 +102,7 @@ class _HomePageState extends CommonPageState<HomePage>
             child: ClipRect(
               child:
                   !_mainController.useSideBar &&
-                      MediaQuery.sizeOf(context).isPortrait
+                      MediaQuery.isPortraitOf(context)
                   ? customAppBar(headerBg == null ? null : foreground)
                   : const SizedBox.shrink(),
             ),

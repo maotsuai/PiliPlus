@@ -23,6 +23,8 @@ abstract final class PathUtils {
   static const coverName = 'cover.jpg';
   static const danmakuName = 'danmaku.pb';
   static const downloadDir = 'download';
+  static const subtitleDir = 'subtitles';
+  static const subtitleExt = '.subtitle';
   static const biliThemeDir = 'bili_theme';
 
   static String buildShadersAbsolutePath(
